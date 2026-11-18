@@ -10,7 +10,7 @@ stable across runs. Order findings by severity: blocker → high → medium → 
 **Skipped:** <categories filtered out by applies-when, or `_None_`>  
 **Result:**  
   🪄 <N> fixed  
-  🛠️ <M> proposed  
+  🛠️ <M> fixes proposed  
   👀 <K> manual review  
   ✅ <J> passed
 
