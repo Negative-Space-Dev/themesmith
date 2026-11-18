@@ -75,7 +75,7 @@ test('writes the rules block to AGENTS.md and makes CLAUDE.md import it, keeping
   setup('--apply')
   const agents = readFileSync(join(repo, 'AGENTS.md'), 'utf8')
   expect(agents.startsWith('# Notes\n\nKeep the hero image.\n\n<!-- themesmith:start -->\n## Shopify theme work\n')).toBe(true)
-  expect(agents).toContain('Never push to `main*` or force-push')
+  expect(agents).toContain("Never push to `main*` unless the person confirms it the way the skill's safety rules require, never force-push")
   expect(readFileSync(join(repo, 'CLAUDE.md'), 'utf8')).toBe('@AGENTS.md\n\nUse tabs.\n')
   expect(setup().missingInstructions).toEqual([])
 })

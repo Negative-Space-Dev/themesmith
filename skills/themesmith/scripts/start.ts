@@ -2,8 +2,14 @@
 //   bun start.ts <short-name>     a new branch from the latest default branch, e.g. fall-sale-banner
 //   bun start.ts --continue       keep working on the current branch
 //   add --new to start a new branch even though the current one has work of its own
+//   add --carry or --leave when other uncommitted changes are in the way (see below)
 // Files setup changed (listed in .themesmith/setup-files.json) are committed first as "Set up themesmith",
 // without a build or checks: they are settings, not theme code.
+//
+// A new branch takes every uncommitted change along, and the next save commits everything, so changes that
+// aren't setup's would end up in this work unnoticed. When there are any, it stops and lists them, for the
+// person to choose: --carry brings them along as part of this work; --leave sets them aside with `git stash`,
+// where `git stash pop` brings them back.
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { exec } from './lib/exec.ts'
@@ -16,6 +22,8 @@ const profile = loadProfile(root)
 const args = process.argv.slice(2)
 const name = args.find((a) => !a.startsWith('--'))
 const keepGoing = args.includes('--continue')
+const setupList = join(root, '.themesmith', 'setup-files.json')
+const setupFiles = existsSync(setupList) ? (JSON.parse(readFileSync(setupList, 'utf8')) as string[]) : []
 
 async function git(...gitArgs: string[]) {
   const r = await exec(['git', ...gitArgs], { cwd: root, timeout: 120_000 })
@@ -43,6 +51,22 @@ if (keepGoing) {
       })
     }
   }
+  const others = await uncommittedOutsideSetup()
+  if (others.length > 0) {
+    if (args.includes('--leave')) {
+      const stash = await git('stash', 'push', '--include-untracked', '-m', `themesmith: set aside before starting ${branch}`, '--', ...others)
+      if (!stash.ok) run.fail('uncommitted', `Could not set the other changes aside:\n${stash.out}`)
+      run.ok('uncommitted', `set aside ${others.length} unrelated changed file(s) with git stash; \`git stash pop\` brings them back`)
+    } else if (args.includes('--carry')) {
+      run.ok('uncommitted', `bringing along ${others.length} changed file(s) as part of this work`)
+    } else {
+      run.fail(
+        'uncommitted',
+        "These files have changes that aren't saved and aren't part of setup. Ask the person whether they belong to this new work (--carry) or should be left out of it (--leave sets them aside; `git stash pop` brings them back).",
+        { files: others }
+      )
+    }
+  }
   const fetch = await fetched!
   if (!fetch.ok) run.fail('fetch', `Could not get the latest "${base}" from GitHub:\n${fetch.out}`)
   // Uncommitted changes, such as the files setup just wrote, come along to the new branch.
@@ -53,9 +77,8 @@ if (keepGoing) {
   for (const f of ['reviewed.json', 'review-notes.md']) rmSync(join(root, '.themesmith', f), { force: true })
 }
 
-const setupList = join(root, '.themesmith', 'setup-files.json')
 if (existsSync(setupList)) {
-  const files = (JSON.parse(readFileSync(setupList, 'utf8')) as string[]).filter((f) => existsSync(join(root, f)))
+  const files = setupFiles.filter((f) => existsSync(join(root, f)))
   if (files.length > 0) {
     const added = await git('add', '--', ...files)
     const commit = added.ok ? await git('commit', '-m', 'Set up themesmith', '--', ...files) : added
@@ -66,3 +89,21 @@ if (existsSync(setupList)) {
 }
 
 run.finish()
+
+// Changed, added or deleted files Git would carry to a new branch, other than setup's (a listed file, or a file
+// inside a listed folder) and themesmith's own state in .themesmith/. Ignored files never move, so they don't
+// count.
+async function uncommittedOutsideSetup(): Promise<string[]> {
+  const r = await exec(['git', 'status', '--porcelain=v1', '-z', '--untracked-files=all'], { cwd: root })
+  const fields = r.stdout.split('\0')
+  const paths: string[] = []
+  for (let i = 0; i < fields.length; i++) {
+    const entry = fields[i]
+    if (entry.length < 4) continue
+    paths.push(entry.slice(3))
+    // A rename is followed by its old path.
+    if (entry[0] === 'R' || entry[0] === 'C') i++
+  }
+  const isSetup = (p: string) => p.startsWith('.themesmith/') || setupFiles.some((f) => p === f || p.startsWith(`${f}/`))
+  return paths.filter((p) => !isSetup(p))
+}

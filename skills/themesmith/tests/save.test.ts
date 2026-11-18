@@ -164,6 +164,8 @@ test('without a connected theme, uploads the built theme to a development theme 
   writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>New</h1>\n')
   const { result } = save('--message', 'Update hero text') as { result: { ok: boolean; preview?: string; previewTheme?: object } }
   expect(result).toMatchObject({ ok: true, preview: 'https://example.myshopify.com/?preview_theme_id=101', previewTheme: { kind: 'development', name: 'hero-text' } })
+  // Every file it committed, for the agent to check against what it changed.
+  expect((result as { committed?: string[] }).committed).toEqual(['sections/hero.liquid'])
   expect(themes()).toEqual([
     { id: 100, name: 'Live', role: 'live' },
     { id: 101, name: 'hero-text', role: 'development' },

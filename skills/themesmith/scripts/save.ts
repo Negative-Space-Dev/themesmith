@@ -65,6 +65,7 @@ const fetched = push ? exec(['git', 'fetch', 'origin', branch], { cwd: root, tim
 const themesFound = push ? findThemes(root, profile, branch) : null
 await run.prepare(profile, changedFiles())
 
+let committed: string[] = []
 if (spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).stdout.trim() !== '') {
   git('add', '-A')
   // The last word on dev mode is what Git is about to save, whatever happened in the folder since the build.
@@ -76,11 +77,13 @@ if (spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' })
   const commit = git('commit', '-m', message!)
   if (!commit.ok) run.fail('commit', commit.out)
   run.ok('commit', git('log', '-1', '--format=%h %s').out)
+  // Everything uncommitted is saved, so the agent checks this list against what it changed.
+  committed = git('show', '--name-only', '--format=', 'HEAD').out.split('\n').filter(Boolean)
 } else {
   run.ok('commit', 'nothing new to commit')
 }
 
-if (!push) run.finish()
+if (!push) run.finish({ committed })
 
 const remote = await fetched!
 if (!remote.ok && !/couldn't find remote ref/i.test(remote.out)) run.fail('pull', `Could not get "${branch}" from GitHub:\n${remote.out}`)
@@ -111,6 +114,7 @@ if (!preview.ok) failWith(preview)
 run.ok('preview', preview.kind === 'connected' ? `"${preview.name}", connected to this branch, has the changes` : `development theme "${preview.name}" updated`)
 if (preview.removedDevelopment) run.ok('old preview', `deleted development theme "${preview.removedDevelopment}": the connected theme replaces it`)
 run.finish({
+  committed,
   preview: preview.preview,
   editor: preview.editor,
   previewTheme: { kind: preview.kind, name: preview.name },

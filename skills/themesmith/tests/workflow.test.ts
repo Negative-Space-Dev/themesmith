@@ -93,21 +93,49 @@ test('start.ts makes a branch from the latest main and commits only the files se
   git(dir, 'init', '-q', '--bare', '-b', 'main', remote)
   git(repo, 'remote', 'add', 'origin', remote)
   profile()
+  write('notes.md', 'original\n')
   commit('init')
   git(repo, 'push', '-q', '-u', 'origin', 'main')
   git(repo, 'remote', 'set-head', 'origin', 'main')
-  // Setup wrote AGENTS.md; the person's own unsaved edit to notes.md must stay out of the setup commit.
+  // Setup wrote AGENTS.md. The person also has unsaved edits of their own, which have nothing to do with setup.
   write('AGENTS.md', 'rules\n')
-  write('notes.md', 'mine\n')
+  write('notes.md', 'my unsaved edit\n')
+  write('draft.liquid', 'mine\n')
   write('.themesmith/setup-files.json', JSON.stringify(['AGENTS.md']))
 
-  const r = script('start.ts', 'Fall Sale Banner', '--no-preview').json()
+  // It stops and lists them, so they don't end up in this work unnoticed.
+  const stopped = script('start.ts', 'Fall Sale Banner')
+  expect(stopped.code).toBe(1)
+  expect(stopped.json()).toMatchObject({ ok: false, files: ['notes.md', 'draft.liquid'] })
+  expect(git(repo, 'branch', '--show-current')).toBe('main')
+
+  // --leave sets them aside; the new branch gets only setup's files.
+  const r = script('start.ts', 'Fall Sale Banner', '--leave').json()
   expect(r.ok).toBe(true)
   expect(git(repo, 'branch', '--show-current')).toBe('fall-sale-banner')
   expect(git(repo, 'log', '-1', '--format=%s')).toBe('Set up themesmith')
   expect(git(repo, 'show', '--name-only', '--format=', 'HEAD')).toBe('AGENTS.md')
-  expect(git(repo, 'status', '--porcelain')).toBe('?? notes.md')
+  expect(git(repo, 'status', '--porcelain')).toBe('')
   expect(existsSync(join(repo, '.themesmith/setup-files.json'))).toBe(false)
+  // And `git stash pop` brings them back.
+  git(repo, 'stash', 'pop', '-q')
+  expect(readFileSync(join(repo, 'notes.md'), 'utf8')).toBe('my unsaved edit\n')
+  expect(readFileSync(join(repo, 'draft.liquid'), 'utf8')).toBe('mine\n')
+})
+
+test('start.ts --carry brings unrelated uncommitted changes along as part of the work', () => {
+  const remote = join(dir, 'remote.git')
+  git(dir, 'init', '-q', '--bare', '-b', 'main', remote)
+  git(repo, 'remote', 'add', 'origin', remote)
+  profile()
+  commit('init')
+  git(repo, 'push', '-q', '-u', 'origin', 'main')
+  git(repo, 'remote', 'set-head', 'origin', 'main')
+  write('sections/hero.liquid', '<h1>Started before</h1>\n')
+
+  expect(script('start.ts', 'hero-text', '--carry').json().ok).toBe(true)
+  expect(git(repo, 'branch', '--show-current')).toBe('hero-text')
+  expect(git(repo, 'status', '--porcelain', '--untracked-files=all')).toBe('?? sections/hero.liquid')
 })
 
 test('start.ts asks before leaving a branch that has work of its own', () => {

@@ -12,6 +12,8 @@ It makes a new branch from the latest `main` and commits any files setup just ch
 
 If it stops because the current branch already has work of its own, ask whether this request continues that work. Then run it again with `--continue` (keep working there) or `--new` (start a new branch anyway).
 
+If it stops because of other unsaved changes (it lists their `files`), ask the person in plain words whether those changes belong to this new work. Then run it again with `--carry` (bring them along) or `--leave` (set them aside; `git stash pop` brings them back later). Never guess: whatever comes along is saved with this work.
+
 ## Make the change
 
 Edit the theme, then save. Check the result in the preview before telling the person it is done. Describe changes the way they see them, not as file names.
@@ -23,6 +25,8 @@ Save whenever a piece works, and always before the person steps away:
 ```bash
 bun <skill>/scripts/save.ts --message "<what changed, in plain words>"
 ```
+
+A save commits every unsaved change in the theme, and its output lists them as `committed`. Check that each one is a file you changed for this request; if any isn't, tell the person what it is before going on.
 
 After every save, follow `references/review.md`: tell the person what changed with the preview link, and check the code in the background.
 
