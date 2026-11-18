@@ -1,0 +1,53 @@
+---
+description: "Use when building or editing Shopify Liquid that loops only to find, filter, map, or test items in arrays such as variants, options, tags, blocks, metafields, or collections. Prefer find, where, map, has, first, or compact."
+id: LIQUID-11
+alwaysApply: false
+---
+
+# LIQUID-11 — Prefer Liquid array filters over manual loops
+
+## Rationale
+
+Shopify Liquid provides array filters (`find`, `where`, `map`, `first`, etc.)
+that are clearer and often more efficient than hand-written search loops.
+
+## How to check
+
+Look for `{% for %}` blocks that iterate an array only to find one item by a
+property, test membership, or extract values.
+
+## How to fix
+
+Replace the loop with the appropriate array filter.
+
+## Examples
+
+### Bad
+
+```liquid
+{% assign current_color_value = '' %}
+{% assign color_option_values = product.options_with_values[color_index].values %}
+{% for value in color_option_values %}
+  {% if value.name == current_color %}
+    {% assign current_color_value = value.swatch.color %}
+    {% break %}
+  {% endif %}
+{% endfor %}
+```
+
+### Good
+
+```liquid
+{% assign current_color_option = product.options_with_values[color_index].values | find: 'name', current_color %}
+{% assign current_color_value = current_color_option.swatch.color.rgb %}
+```
+
+### Common filters
+
+| Goal | Filter |
+|------|--------|
+| Find one item by property | `\| find: 'property', value` |
+| Filter array | `\| where: 'property', value` |
+| Extract property list | `\| map: 'property'` |
+| Test membership | `\| has: 'property', value` |
+| Remove nils | `\| compact` |

@@ -1,0 +1,19 @@
+---
+description: "Use when building or editing JavaScript that opens a Shopify modal, drawer, popup, quick-view, cart drawer, or popover over the page. Move focus in, trap focus while open, and restore focus on close."
+id: MODAL-03
+alwaysApply: false
+---
+
+# MODAL-03 — Focus management (trap + restore)
+
+## Rationale
+
+Focus must move into the modal, stay trapped while open, and return to the trigger on close.
+
+## How to check
+
+Read the JS controlling open/close; verify focus is moved in, trapped, and restored.
+
+## How to fix
+
+Propose focus-trap logic and storing/restoring the trigger element.

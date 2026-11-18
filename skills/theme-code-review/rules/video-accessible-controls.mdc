@@ -1,0 +1,20 @@
+---
+description: "Use when building or editing Shopify video UI with play/pause, mute, carousel video, product media, embedded video, or custom video controls. Ensure interactive video has accessible controls and no keyboard trap."
+id: VID-04
+alwaysApply: false
+---
+
+# VID-04 — Accessible controls / no keyboard trap
+
+## Rationale
+
+Interactive video needs `controls` or accessible custom controls and must not trap
+keyboard focus.
+
+## How to check
+
+Confirm `controls` exists or custom controls are keyboard-operable and labeled.
+
+## How to fix
+
+User adds `controls` or wires accessible custom controls.

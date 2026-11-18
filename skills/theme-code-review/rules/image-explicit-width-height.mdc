@@ -1,0 +1,41 @@
+---
+description: "Use when Shopify theme code renders a raw <img> tag or a non-Shopify image source that needs explicit dimensions. Do not require width/height on image_tag when the input is a Shopify image object because image_tag emits dimensions by default."
+id: IMG-01
+alwaysApply: false
+---
+
+# IMG-01 — Set explicit width and height on raw images
+
+## Rationale
+
+Prevents cumulative layout shift (CLS) while the image loads.
+
+Shopify's `image_tag` filter is different: when the input is a Shopify image
+object, it emits `width` and `height` by default. Do not ask for explicit
+`width:` / `height:` arguments in that case unless the theme intentionally needs
+to override the rendered dimensions.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check images <file>
+```
+
+Flags raw `<img>` tags with neither `width`+`height` nor a CSS `aspect-ratio`.
+It does not flag `image_tag` usage.
+
+## How to fix
+
+**Auto-fix** raw `<img>` when dimensions are derivable:
+
+- From a Shopify image or media object: `image.width` / `image.height`
+- From a known crop or aspect ratio: e.g. square crop → set height equal to width
+- Prefer replacing raw `<img>` with `image_tag` from a Shopify image object
+
+**Do not fix** by adding `width:` / `height:` to
+`{{ image_object | image_tag }}` just to mirror `image_object.width` /
+`image_object.height`; that is redundant because `image_tag` already emits the
+Shopify image object's dimensions.
+
+**Propose** only when there is no image/media object and no known crop or aspect
+ratio to infer dimensions from.

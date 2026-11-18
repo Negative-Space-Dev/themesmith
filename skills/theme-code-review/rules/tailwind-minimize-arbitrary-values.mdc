@@ -1,0 +1,110 @@
+---
+description: "Use when Shopify theme markup or CSS uses Tailwind arbitrary values like w-[347px], text-[14px], or gap-[17px]. Prefer default Tailwind scale first, then existing or new theme config tokens; use arbitrary values only when no close value exists and the value should not enter the theme system."
+id: TW-01
+alwaysApply: false
+---
+
+# TW-01 — Minimize arbitrary Tailwind values
+
+## Rationale
+
+Arbitrary values (`w-[347px]`, `mt-[13px]`, `text-[0.8125rem]`) bypass Tailwind's
+design system. They are harder to maintain, inconsistent across the theme, and
+often unnecessary when a nearby scale or config token is close enough.
+
+Use this order:
+
+1. **Default Tailwind scale** — `w-80`, `gap-4`, `text-sm`, `rounded-lg`.
+2. **Existing theme config** — check `tailwind.config` for project tokens before
+   adding new ones or using arbitrary values (see TW-02 for patterns).
+3. **New theme config token** — when the value should be part of the system.
+4. **Arbitrary values (last resort)** — only when no close value exists **and**
+   the value is truly one-off or outside what belongs in config.
+
+A design that is 1–2px (or even a few px) off the scale usually does not matter.
+Do not chase pixel-perfect arbitrary values unless the difference is visually
+meaningful.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check tailwind <file>
+```
+
+Flags utility classes with arbitrary `[…]` values in `class`, `className`, or
+`@apply`. For each finding:
+
+1. Read `tailwind.config.js` / `tailwind.config.ts` in the theme.
+2. Check whether an existing token already covers the value (or is close enough).
+3. Apply the decision order above.
+
+**Usually acceptable (do not propose a change):**
+
+- CSS variables: `w-[var(--section-width)]`
+- Empty pseudo-element content: `content-['']`
+- One-off layout constraints that cannot map to scale or config (rare)
+
+## How to fix
+
+**Propose** replacing the arbitrary value with:
+
+- the nearest default scale utility,
+- an **existing** config token (`text-2sm`, `py-18`, `text-dark-gray`), or
+- a **new** config token (see TW-02), then use that token in markup
+
+**Do not propose** arbitrary values when a scale or config value within a few
+pixels is good enough.
+
+## Examples
+
+### Bad
+
+```html
+<div class="mt-[13px] gap-[18px] text-[15px] text-[#4E5357] py-[4.5rem]">
+```
+
+### Good — default scale
+
+```html
+<div class="mt-3 gap-4 text-sm">
+```
+
+### Good — existing config tokens (check config first)
+
+Our themes commonly extend spacing, typography, colors, and breakpoints in
+config. Prefer tokens that already exist:
+
+```html
+<div class="gap-4.5 text-2sm text-dark-gray py-18">
+```
+
+```js
+// Already in theme — use these instead of arbitrary values
+extend: {
+  spacing: { 4.5: '1.125rem', 18: '4.5rem' },
+  fontSize: { '2sm': ['0.9375rem', '1.125rem'] },
+},
+colors: { 'dark-gray': '#4E5357' },
+```
+
+### Good — add to config when missing but recurring
+
+```js
+extend: {
+  spacing: { 5.5: '1.375rem' },
+  fontSize: { '2.5xl': ['1.625rem', '2rem'] },
+  borderRadius: { '1.5xl': '14px' },
+},
+```
+
+```html
+<div class="mt-5.5 text-2.5xl rounded-1.5xl">
+```
+
+### Good — rare one-off arbitrary when justified
+
+```html
+<div class="aspect-[4/5.2]">
+  <!-- Unusual ratio with no close scale equivalent; not worth adding to config -->
+</div>
+```

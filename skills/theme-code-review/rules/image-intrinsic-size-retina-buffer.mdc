@@ -1,0 +1,97 @@
+---
+description: "Use when building or editing Shopify sections/components with content, product, hero, or gallery images. Manually verify the largest requested source width is at least 1.5–2× the image's rendered CSS size for sharp retina display."
+id: IMG-07
+alwaysApply: false
+---
+
+# IMG-07 — Intrinsic image size ≥ 1.5–2× rendered size
+
+## Rationale
+
+Browsers pick a candidate from `srcset` (or a single `width`/`image_url` size)
+based on viewport and `sizes`. If the largest available source is only slightly
+larger than — or smaller than — the rendered CSS width, the image looks soft on
+retina/high-DPI screens.
+
+Target **1.5×–2×** the rendered width (height when height-constrained). This
+cannot be verified reliably from Liquid alone — it needs layout context.
+
+## How to check
+
+**Manual only.** For each non-icon content image:
+
+1. **Estimate rendered size** — largest CSS display width/height the image can
+   occupy:
+   - `sizes` attribute math (e.g. `(min-width: 990px) 50vw, 100vw` on a 1440px
+     viewport → ~720px rendered)
+   - Tailwind/utility classes (`w-full` inside a `max-w-*` container, grid
+     column spans, fixed card widths)
+   - Section layout (hero full-bleed, product card thumbnail, gallery slide)
+
+2. **Find largest requested source** — highest width in:
+   - `image_tag` `widths:` list
+   - `image_url: width: N`
+   - Hardcoded `src`/`srcset` width descriptors
+   - `<picture>` `<source>` media variants
+
+3. **Compare ratio** — `largest_source_width / rendered_width`:
+   - **≥ 2×** — ideal for retina
+   - **1.5×–2×** — acceptable
+   - **< 1.5×** — flag; likely blurry on 2× displays
+   - **≫ 2×** (e.g. 4×+) — note as optional bandwidth waste, not a failure
+
+**Skip** tiny icons, logos, and sprites where display size matches asset size.
+
+## How to fix
+
+**Propose** — adjust `widths:` / `width:` / crop so the largest candidate is
+~2× the max rendered size. Also fix an incorrect `sizes` if it understates layout.
+
+### Bad
+
+```liquid
+{% comment %} Card renders ~400px wide on desktop; only 500px source max {% endcomment %}
+{{
+  product.featured_image
+  | image_url: width: 500
+  | image_tag: class: 'w-full', sizes: '(min-width: 750px) 400px, 100vw'
+}}
+```
+
+500 ÷ 400 = 1.25× — soft on retina.
+
+### Good
+
+```liquid
+{{
+  product.featured_image
+  | image_tag:
+    widths: '400, 600, 800, 1200',
+    sizes: '(min-width: 750px) 400px, 100vw',
+    class: 'w-full'
+}}
+```
+
+Desktop card: 400px rendered → 800px or 1200px candidate ≈ 2–3×.
+
+### Hero example
+
+Full-bleed hero ~1400px rendered on large screens:
+
+```liquid
+{{
+  section.settings.image
+  | image_tag:
+    widths: '700, 1400, 2100, 2800',
+    sizes: '100vw',
+    fetchpriority: 'high'
+}}
+```
+
+Largest 2800px ÷ 1400px = 2×.
+
+## Report as manual checklist
+
+When ratio is unclear from code alone, add a manual item with the estimated
+rendered size, largest source width, and ratio — ask the developer to confirm
+in DevTools (Computed width × 2 vs selected `srcset` entry).

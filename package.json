@@ -1,0 +1,14 @@
+{
+  "name": "themesmith",
+  "private": true,
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "bun install --cwd skills/themesmith --frozen-lockfile"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4",
+    "typescript": "5.9.3"
+  },
+  "license": "MIT"
+}

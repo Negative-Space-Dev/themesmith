@@ -1,0 +1,98 @@
+---
+description: "Use when Shopify theme Tailwind classes use arbitrary color values like bg-[#hex], text-[rgb(...)], or border-[hsl(...)] instead of colors defined in tailwind.config. Prefer existing theme color tokens (semantic names, nested palettes)."
+id: TW-03
+alwaysApply: false
+---
+
+# TW-03 — Prefer theme colors over hardcoded arbitrary colors
+
+## Rationale
+
+Hardcoded arbitrary colors (`bg-[#1a2b3c]`, `text-[rgb(10,10,10)]`) duplicate
+brand values in markup and make refactors harder.
+Colors that belong to the design system should live in `tailwind.config`.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check tailwind <file>
+```
+
+Flags color utilities with arbitrary hex, rgb, hsl, or oklch values.
+
+Before proposing a new color, **read the project's `tailwind.config`** — our
+themes usually define a rich palette already.
+
+## Our color patterns
+
+Typical project config includes:
+
+- **Semantic UI tokens**: `foreground`, `background`, `button-text`,
+  `button-background`
+- **Flat brand/neutral names**: `red`, `pink`, `black`, `dark-gray`,
+  `light-gray`, `linen`, `silver`, `yellow`
+- **Nested variant objects**: `purple.offwhite`, `purple.DEFAULT`, `purple.dark`
+
+```js
+colors: {
+  foreground: '#1E1E1E',
+  background: '#FFFFFF',
+  red: '#F23440',
+  'dark-gray': '#4E5357',
+  linen: '#FAF1E8',
+  purple: {
+    offwhite: '#E5DFF2',
+    DEFAULT: '#6C5A9F',
+    dark: '#58468B',
+  },
+},
+```
+
+Use `text-foreground`, `bg-linen`, `text-purple-dark` — not hex arbitraries.
+
+## How to fix
+
+**Propose** replacing the arbitrary color with an **existing** config token when
+one matches (or is close enough).
+
+If no token exists and the color is part of the brand system, add it to config
+(see TW-02), then update markup.
+
+**Acceptable** when the color is truly one-off (e.g. a third-party embed) and
+should not enter the theme system.
+
+## Examples
+
+### Bad
+
+```html
+<p class="text-[#4E5357]">Body copy</p>
+<div class="bg-[#FAF1E8] border-[#D4D7D6]">…</div>
+<button class="bg-[#6C5A9F]">Shop now</button>
+```
+
+### Good — existing theme tokens
+
+```html
+<p class="text-dark-gray">Body copy</p>
+<div class="bg-linen border-silver">…</div>
+<button class="bg-purple">Shop now</button>
+```
+
+### Good — semantic UI tokens
+
+```html
+<div class="bg-background text-foreground">
+  <button class="bg-button-background text-button-text">Add to cart</button>
+</div>
+```
+
+### Good — add to config when missing
+
+```js
+colors: { 'extra-light-gray': '#F4F4F4' },
+```
+
+```html
+<div class="bg-extra-light-gray">…</div>
+```

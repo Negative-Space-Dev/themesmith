@@ -1,0 +1,55 @@
+---
+description: "Use when building or editing Shopify Liquid that uses 'now' | date, current-time comparisons, countdowns, sale timers, new badges, expiry dates, or time-based visibility. Avoid cache-breaking current-time logic in Liquid."
+id: LIQUID-06
+alwaysApply: false
+---
+
+# LIQUID-06 — Avoid cache-breaking date operations
+
+## Rationale
+
+Passing `'now'` to the `date` filter returns the current timestamp, which changes
+every second. That makes rendered output differ on each request, breaks Shopify's
+page cache, and hurts performance. Prefer pre-calculated values, metafields
+maintained by Shopify Flow, or client-side time logic.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check liquid-performance <file>
+```
+
+Flags `'now' | date` and similar cache-breaking date comparisons.
+
+## How to fix
+
+Move time-sensitive comparisons to JavaScript, use Flow/automation for time-based
+badges, or serialize a static timestamp once without comparing to `now` in Liquid.
+
+## Examples
+
+### Bad
+
+```liquid
+{% if product.metafields.custom.drop_date != blank %}
+  {% assign available = product.metafields.custom.drop_date | date: '%s' %}
+  {% assign now = 'now' | date: '%s' %}
+  {% if now > available %}
+    {% assign days = now | minus: available | divided_by: 86400.00 %}
+    {% if days < settings.new_badge_days %}
+      {% assign showNewBadge = true %}
+    {% endif %}
+  {% endif %}
+{% endif %}
+```
+
+### Good
+
+```liquid
+{% if product.metafields.custom.drop_date != blank %}
+  {% assign drop_date_timestamp = product.metafields.custom.drop_date | date: '%s' %}
+  <div data-drop-date="{{ drop_date_timestamp }}" class="product-availability">
+    <!-- Handle time-based logic with JavaScript -->
+  </div>
+{% endif %}
+```

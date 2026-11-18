@@ -1,0 +1,21 @@
+---
+description: "Use when building or editing Shopify modal, drawer, popup, quick-view, newsletter, cart drawer, size guide, or popover UI. Dialogs need an accessible name via aria-label or aria-labelledby."
+id: MODAL-02
+alwaysApply: false
+---
+
+# MODAL-02 — Accessible name
+
+## Rationale
+
+Dialogs must be labelled via `aria-label` or `aria-labelledby`.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check modals-dialogs <file>
+```
+
+## How to fix
+
+Propose `aria-labelledby` pointing at the dialog title.

@@ -1,0 +1,55 @@
+---
+description: "Use when building or editing configurable Shopify sections/blocks that reference collection handles, product handles, metafield namespaces/keys, badge text, content sources, or settings directly. Prefer schema settings and dynamic sources."
+id: LIQUID-10
+alwaysApply: false
+---
+
+# LIQUID-10 — Prefer section settings over hardcoded global references
+
+## Rationale
+
+Hardcoded metafield namespaces, settings keys, or collection handles make themes
+inflexible and harder to maintain. Section and block settings with dynamic
+references (collection pickers, metafield references, richtext) let merchants
+configure content without code changes.
+
+## How to check
+
+Look for hardcoded `product.metafields.*`, `settings.*` feature toggles tied to
+specific keys, or literal collection handles like `collections['featured-products']`.
+
+## How to fix
+
+Expose content sources via `{% schema %}` settings/blocks — collection pickers,
+product metafield references, richtext fields — and read from
+`section.settings` / `block.settings` in the template.
+
+## Examples
+
+### Bad
+
+```liquid
+{% if product.metafields.main.subcopy != blank %}
+  {{ product.metafields.main.subcopy | metafield_tag }}
+{% endif %}
+
+{% if collections['featured-products'].handle == collection.handle %}
+  <div class="featured-badge">Featured Product</div>
+{% endif %}
+```
+
+### Good
+
+```liquid
+{% if section.settings.subcopy_content != blank %}
+  {{ section.settings.subcopy_content }}
+{% endif %}
+
+{% if section.settings.show_featured_badge %}
+  <div class="featured-badge">
+    {{ section.settings.featured_badge_text | default: 'Featured Product' }}
+  </div>
+{% endif %}
+```
+
+Add corresponding settings in `{% schema %}`.

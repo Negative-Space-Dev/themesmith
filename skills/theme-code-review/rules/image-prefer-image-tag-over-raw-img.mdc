@@ -1,0 +1,39 @@
+---
+description: "Use when building or editing Shopify theme image markup with raw <img> tags or hardcoded image URLs. Prefer image_tag/image_url from Shopify image objects; confirm intentional exceptions."
+id: IMG-05
+alwaysApply: false
+---
+
+# IMG-05 — Prefer image_tag over raw <img> and hardcoded URLs
+
+## Rationale
+
+Shopify themes should usually render images with `image_tag` / `image_url` driven
+by image or media objects — not raw `<img>` markup or hardcoded URLs. Hardcoded
+URLs skip transforms, break across stores, and bypass Shopify image settings.
+
+Valid exceptions exist (external assets, SVG sprites, third-party URLs, art-directed
+markup). Flag these for review, do not auto-change them.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check images <file>
+```
+
+Flags:
+
+- Raw `<img>` elements in Liquid/HTML source
+- `<img>` tags with hardcoded `src` values (literal URLs, not Liquid output)
+
+## How to fix
+
+**Propose / evaluate — never auto-fix.**
+
+For each finding, confirm with the developer whether the raw `<img>` or hardcoded
+URL is intentional:
+
+- **Switch to `image_tag`** when rendering a Shopify image/media object
+- **Keep as-is** for external URLs, static assets, sprites, or markup `image_tag`
+  cannot express
+- **Document why** when keeping an exception

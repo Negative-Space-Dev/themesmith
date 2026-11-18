@@ -1,0 +1,48 @@
+---
+description: "Use when building or editing Shopify Liquid that passes data to JavaScript with | json, data attributes, script tags, product cards, variant pickers, or cart UI. Serialize only the fields JS needs, not full product/collection/cart objects."
+id: LIQUID-08
+alwaysApply: false
+---
+
+# LIQUID-08 — Avoid unnecessary JSON serialization
+
+## Rationale
+
+Using `| json` on large objects (full `product`, `collection`, `cart`) is
+CPU-intensive, bloats HTML, slows parse time, and sends data the client never
+uses.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check liquid-performance <file>
+```
+
+Flags large object `| json` usage (review whether the serialized object is minimal).
+
+## How to fix
+
+Use data attributes for individual fields, or build a minimal JSON object with
+only the properties JavaScript needs.
+
+## Examples
+
+### Bad
+
+```liquid
+<div class="product-card" data-product="{{ product | json }}">
+  <span class="current-price">{{ product.price | money }}</span>
+</div>
+```
+
+### Good
+
+```liquid
+<div class="product-card"
+     data-product-id="{{ product.id }}"
+     data-product-price-cents="{{ product.price }}">
+  <span class="current-price">{{ product.price | money }}</span>
+</div>
+```
+
+Or serialize only variant id → price pairs needed for client updates.

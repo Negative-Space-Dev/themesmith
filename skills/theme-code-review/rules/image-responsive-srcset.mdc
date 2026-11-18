@@ -1,0 +1,24 @@
+---
+description: "Use when building or editing a Shopify section/component that renders content, product, collection, hero, or gallery images. Prefer image_tag widths/srcset and sizes so images are responsive."
+id: IMG-03
+alwaysApply: false
+---
+
+# IMG-03 — Responsive srcset / widths
+
+## Rationale
+
+Serving one large image to all viewports wastes bandwidth and hurts LCP on mobile.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check images <file>
+```
+
+Flags `<img>`/`image_tag` lacking `srcset`/`widths` for non-icon images.
+
+## How to fix
+
+Propose `image_tag` with `widths:` (e.g. `widths: '375, 750, 1100, 1500'`) and
+an appropriate `sizes` attribute.

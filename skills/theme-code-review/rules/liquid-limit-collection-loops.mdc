@@ -1,0 +1,45 @@
+---
+description: "Use when building or editing Shopify Liquid sections/snippets that loop over collection.products, collections, search results, blocks, menus, or large arrays. Add limit: or paginate for collection-sized loops."
+id: LIQUID-02
+alwaysApply: false
+---
+
+# LIQUID-02 — Limit loops with limit: or pagination
+
+## Rationale
+
+Unbounded loops over collections can render hundreds of items and blow the Liquid
+render budget.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check liquid-performance <file>
+```
+
+Flags `for` over `.products`/`collections`/`all_products` without `limit:` or
+`paginate`.
+
+## How to fix
+
+Propose adding `limit:` or wrapping in `{% paginate %}`.
+
+## Examples
+
+### Bad
+
+```liquid
+{% for product in collection.products %}
+  {% render 'product-card', product: product %}
+{% endfor %}
+```
+
+### Good
+
+```liquid
+{% paginate collection.products by 24 %}
+  {% for product in collection.products %}
+    {% render 'product-card', title: product.title, url: product.url %}
+  {% endfor %}
+{% endpaginate %}
+```

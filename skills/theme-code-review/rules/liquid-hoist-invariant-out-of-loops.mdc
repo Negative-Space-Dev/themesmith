@@ -1,0 +1,44 @@
+---
+description: "Use when building or editing Shopify Liquid loops where assign, capture, expensive filters, settings lookups, or repeated calculations inside the loop do not depend on the current loop item. Hoist invariant work above the loop."
+id: LIQUID-05
+alwaysApply: false
+---
+
+# LIQUID-05 — Hoist invariant work out of loops
+
+## Rationale
+
+Repeating constant computation per iteration multiplies render cost.
+
+## How to check
+
+Read the loop body; identify `assign`/filter chains that are constant across
+iterations.
+
+## How to fix
+
+Propose moving invariant `assign`s above the loop.
+
+## Examples
+
+### Bad
+
+```liquid
+{% for product in collection.products limit: section.settings.product_limit %}
+  {% assign card_class = section.settings.card_style | prepend: 'product-card--' %}
+  <article class="product-card {{ card_class }}">
+    {{ product.title }}
+  </article>
+{% endfor %}
+```
+
+### Good
+
+```liquid
+{% assign card_class = section.settings.card_style | prepend: 'product-card--' %}
+{% for product in collection.products limit: section.settings.product_limit %}
+  <article class="product-card {{ card_class }}">
+    {{ product.title }}
+  </article>
+{% endfor %}
+```

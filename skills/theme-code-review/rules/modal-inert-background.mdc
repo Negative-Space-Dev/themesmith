@@ -1,0 +1,19 @@
+---
+description: "Use when building or editing Shopify modal or drawer UI that overlays the page with aria-modal behavior. Make background content inert or aria-hidden while the overlay is open."
+id: MODAL-06
+alwaysApply: false
+---
+
+# MODAL-06 — Inert/aria-hidden the rest of the page
+
+## Rationale
+
+Background content should be `inert` (or `aria-hidden`) so AT users can't tab into it behind the modal.
+
+## How to check
+
+Verify background is made inert when the modal opens.
+
+## How to fix
+
+Propose toggling `inert` on the main content wrapper.

@@ -1,0 +1,68 @@
+---
+description: "Use when building or editing Shopify theme video markup. Default to lazy-video snippet pattern (data-lazy-video + lazy-video.js); skip for hero, video banner, or first product media video."
+id: VID-03
+alwaysApply: false
+---
+
+# VID-03 — Default lazy-load video (with known exceptions)
+
+## Rationale
+
+Video files are heavy. Default to deferred loading — do not embed `<source>` tags or
+`src` on `<video>` until the video is needed. Section placement is unpredictable,
+same as images.
+
+**Do not lazy-load** only in these cases:
+
+- Hero video sections
+- Video/image banner sections
+- The first video in a main product section
+
+## Standard lazy-video setup
+
+If the theme does not already have this pattern, create both files below and use
+the snippet everywhere video media is rendered (except the exceptions above).
+
+### `snippets/lazy-video.liquid`
+
+- Accepts `media` (Shopify video media object), optional `classes`, `controls`,
+  `preload`, `onclick`
+- Renders a `<video>` with:
+  - `data-lazy-video` attribute
+  - `poster` from `media.preview_image | image_url`
+  - `data-srcs` JSON built from `media.sources` (skip `application/x-mpegURL` / m3u8)
+  - **No** inline `src` or `<source>` tags in the initial markup
+  - Typical autoplay background attrs when needed: `autoplay`, `playsinline`, `loop`, `muted`
+- Loads `lazy-video.js` as a module script
+
+```liquid
+{% render 'lazy-video', media: media, classes: 'h-full w-full object-cover', controls: true %}
+```
+
+### `assets/lazy-video.js`
+
+- Guard with a single global `IntersectionObserver` (`window.videoObserver`)
+- Query `[data-lazy-video]` and observe each element
+- `loadVideo(video)`: parse `data-srcs`, append `<source>` elements, remove loading blur
+- On observe: when ≥50% visible and paused → load sources and play; when <50% visible
+  and playing → pause
+- Expose `video.loadVideo()` for manual hydration (e.g. carousels/sliders)
+- If inside a carousel slide, load sources but leave paused — let carousel events control play
+
+## How to check
+
+Confirm videos either use the lazy-video pattern (`data-lazy-video`) or qualify
+for an exception above. For YouTube/Vimeo iframes, default to `loading="lazy"`
+unless excepted.
+
+## How to fix
+
+**Auto-fix:** If `snippets/lazy-video.liquid` and `assets/lazy-video.js` exist,
+replace eager `<video src="…">` / inline `<source>` markup with
+`{% render 'lazy-video', media: media %}`. If they do not exist, create them using
+the standard setup above, then render the snippet.
+
+For iframes, add `loading="lazy"` by default.
+
+**Skip lazy-loading** for hero, video banner, or first product media video —
+use eager preload / inline sources there instead.

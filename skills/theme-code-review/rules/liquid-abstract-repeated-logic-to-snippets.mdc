@@ -1,0 +1,73 @@
+---
+description: "Use when building or editing Shopify sections/components with repeated Liquid markup, duplicated conditionals, repeated badge/card/media logic, or large copy-pasted blocks. Extract shared logic to snippets rendered with explicit arguments."
+id: LIQUID-12
+alwaysApply: false
+---
+
+# LIQUID-12 — Abstract repeated logic to snippets
+
+## Rationale
+
+Large monolithic sections with repeated or complex logic are hard to maintain,
+test, and keep consistent. Centralize repeated blocks in snippets.
+
+## How to check
+
+Scan for duplicated Liquid blocks (same assign/if/render pattern appearing twice),
+or sections/snippets with long repeated conditional markup.
+
+## How to fix
+
+Extract the shared logic into a snippet and `{% render %}` it with the varying
+arguments.
+
+## Examples
+
+### Bad
+
+```liquid
+{% comment %} Same badge date/visibility logic duplicated twice {% endcomment %}
+{% if product.metafields.display.badge.value != blank %}
+  {% liquid
+    assign show_badge = false
+    if product.metafields.display.badge.value.end_date != null
+      assign current_date = 'now' | date: '%s'
+      ...
+    endif
+  %}
+  {% if show_badge %}<span>...</span>{% endif %}
+{% endif %}
+
+{% for badge in variant.metafields.display.badges.value %}
+  {% liquid
+    assign show_badge = false
+    if badge.end_date != null
+      assign current_date = 'now' | date: '%s'
+      ...
+    endif
+  %}
+  {% if show_badge %}<span>...</span>{% endif %}
+{% endfor %}
+```
+
+### Good
+
+```liquid
+{% if product.metafields.display.badge.value != blank %}
+  {% render 'badge',
+    text: product.metafields.display.badge.value.text,
+    end_date: product.metafields.display.badge.value.end_date,
+    badge_classes: badge_classes
+  %}
+{% endif %}
+
+{% for badge in variant.metafields.display.badges.value %}
+  {% render 'badge',
+    text: badge.text,
+    end_date: badge.end_date,
+    badge_classes: badge_classes
+  %}
+{% endfor %}
+```
+
+The snippet should also avoid cache-breaking date logic; see LIQUID-06.

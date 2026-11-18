@@ -1,0 +1,40 @@
+---
+description: "Use when building or editing Shopify Liquid snippets, sections, or legacy theme code that contains {% include %}. Replace include with {% render %} and pass needed values explicitly."
+id: LIQUID-04
+alwaysApply: false
+---
+
+# LIQUID-04 — Use render instead of deprecated include
+
+## Rationale
+
+`{% render %}` has isolated scope; deprecated `{% include %}` leaks scope and is
+harder to reason about.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check liquid-performance <file>
+```
+
+Flags `{% include %}`.
+
+## How to fix
+
+Replace `{% include 'x' %}` with `{% render 'x' %}`, passing needed variables
+explicitly. If the snippet relied on implicit outer-scope variables, pass them as
+render arguments (downgrade to propose if scope is unclear).
+
+## Examples
+
+### Bad
+
+```liquid
+{% include 'card' %}
+```
+
+### Good
+
+```liquid
+{% render 'card', title: product.title, url: product.url %}
+```

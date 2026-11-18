@@ -1,0 +1,22 @@
+---
+description: "Use when building or editing a Shopify section/component with autoplaying video, video banners, background video, or product media video. Autoplaying videos must include muted and playsinline."
+id: VID-02
+alwaysApply: false
+---
+
+# VID-02 — Don't autoplay with sound
+
+## Rationale
+
+Autoplay with audio is disallowed by browsers; autoplay requires `muted` and
+usually `playsinline`.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check video <file>
+```
+
+## How to fix
+
+Propose adding both `muted` and `playsinline` to the autoplaying `<video>`.

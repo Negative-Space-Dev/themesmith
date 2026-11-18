@@ -1,0 +1,21 @@
+---
+description: "Use when building or editing a Shopify section/component that renders a <video>, video banner, product media video, or background video. Provide a poster image so the video has a stable preview frame."
+id: VID-01
+alwaysApply: false
+---
+
+# VID-01 — Provide a poster image
+
+## Rationale
+
+A `poster` avoids a blank frame and improves perceived performance before the video loads.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check video <file>
+```
+
+## How to fix
+
+Propose adding `poster` referencing a representative frame (via `image_url`).

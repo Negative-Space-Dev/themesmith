@@ -1,0 +1,16 @@
+{
+  "name": "theme-code-review-scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "detect": "bun ./cli.ts detect",
+    "check": "bun ./cli.ts check",
+    "typecheck": "tsc --noEmit",
+    "sync-rules": "bun ./sync-rule-registry.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "@types/node": "^26.0.1",
+    "typescript": "^6.0.3"
+  }
+}

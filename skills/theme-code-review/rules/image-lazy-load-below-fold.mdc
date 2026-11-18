@@ -1,0 +1,32 @@
+---
+description: "Use when building or editing a Shopify section/component with images. Default to loading=lazy unless the section is a hero, image banner, or main product section first image — placement above the fold is not reliably knowable."
+id: IMG-02
+alwaysApply: false
+---
+
+# IMG-02 — Default lazy-load images (with known exceptions)
+
+## Rationale
+
+Default images to `loading="lazy"`. Section placement is unpredictable — neither
+the agent nor the developer can reliably know if an image is above the fold,
+because the same section may appear in different template positions.
+
+**Do not lazy-load** only in these cases:
+
+- Hero image sections
+- Image banner sections
+- The first image in a main product section
+
+## How to check
+
+Confirm each image either has `loading="lazy"` or qualifies for one of the
+exceptions above.
+
+## How to fix
+
+**Auto-fix:** Add `loading="lazy"` to images by default.
+
+Skip lazy-loading (or use `loading="eager"` + `fetchpriority="high"` on hero
+images) only when the section matches an exception above — not based on guessed
+template placement.

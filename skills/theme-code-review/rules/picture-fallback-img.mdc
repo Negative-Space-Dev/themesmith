@@ -1,0 +1,25 @@
+---
+description: "Use when building or editing art-directed Shopify image markup with <picture> or multiple <source> elements. Ensure the picture includes a fallback <img> with image rules applied."
+id: IMG-06
+alwaysApply: false
+---
+
+# IMG-06 — picture element has fallback img
+
+## Rationale
+
+`<picture>` requires a fallback `<img>`; sources need `media` and/or `type` to be
+useful.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check images <file>
+```
+
+Flags `<picture>` without a child `<img>`.
+
+## How to fix
+
+Propose adding the fallback `<img>` (with IMG-01 attributes) and `media`/`type`
+on `<source>` elements.

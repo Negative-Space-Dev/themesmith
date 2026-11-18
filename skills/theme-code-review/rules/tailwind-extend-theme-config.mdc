@@ -1,0 +1,177 @@
+---
+description: "Use when a Shopify theme Tailwind class needs a custom spacing, sizing, color, font, radius, or breakpoint value that does not exist in the default scale but should be reused or kept consistent. Add the value to tailwind.config following project patterns instead of repeated arbitrary utilities."
+id: TW-02
+alwaysApply: false
+---
+
+# TW-02 — Extend Tailwind config before one-off values
+
+## Rationale
+
+When a design value does not match Tailwind's defaults but **will recur** across
+sections, components, or breakpoints, add it to the theme config. That keeps
+utilities semantic, searchable, and aligned with the design system.
+
+This is the intermediate step between default scale utilities and arbitrary
+values. **Always read the project's existing `tailwind.config` first** — many
+tokens may already exist.
+
+## Preferred config patterns
+
+Our themes typically extend config like this:
+
+### Colors — semantic names and nested scales
+
+```js
+theme: {
+  colors: {
+    // Semantic UI tokens
+    foreground: '#1E1E1E',
+    background: '#FFFFFF',
+    'button-text': '#FFFFFF',
+    'button-background': '#6C5A9F',
+    // Flat brand / neutral palette
+    red: '#F23440',
+    black: '#1E1E1E',
+    'dark-gray': '#4E5357',
+    linen: '#FAF1E8',
+    // Nested color objects for variants
+    purple: {
+      offwhite: '#E5DFF2',
+      light: '#B8ACD6',
+      DEFAULT: '#6C5A9F',
+      dark: '#58468B',
+    },
+  },
+},
+```
+
+Use `text-dark-gray`, `bg-linen`, `text-purple-dark` — not `text-[#4E5357]`.
+
+### Spacing — fractional and named steps in `extend.spacing`
+
+```js
+extend: {
+  spacing: {
+    '1/2px': '0.5px',
+    4.5: '1.125rem',
+    5.5: '1.375rem',
+    6.5: '1.625rem',
+    18: '4.5rem',
+  },
+},
+```
+
+### Typography — custom sizes with line-height tuples
+
+```js
+extend: {
+  fontSize: {
+    xxs: ['0.625rem', '0.75rem'],
+    '2sm': ['0.9375rem', '1.125rem'],
+    '2.5xl': ['1.625rem', '2rem'],
+    '3.5xl': ['2rem', '2.4rem'],
+  },
+  fontFamily: {
+    'apercu-pro': 'Apercu Pro',
+    'freight-pro': 'Freight Pro',
+  },
+  lineHeight: {
+    '1.1x': '110%',
+    '1.2x': '120%',
+  },
+  letterSpacing: {
+    'less-wide': '0.0125em',
+  },
+},
+```
+
+### Layout — container padding, screens, radius, shadows
+
+```js
+container: {
+  center: true,
+  padding: {
+    DEFAULT: '1rem',
+    sm: '2rem',
+    lg: '3rem',
+    '3xl': '10rem',
+  },
+},
+extend: {
+  screens: {
+    xxs: '380px',
+    xs: '450px',
+    '2xl': '1440px',
+    '3xl': '1800px',
+  },
+  borderRadius: { '1.5xl': '14px' },
+  borderWidth: { 3: '3px' },
+  zIndex: { 60: '60' },
+  boxShadow: {
+    'bg-darken': 'inset 0px 0px 400px 110px rgba(var(--color-shadow), 0.1)',
+  },
+},
+```
+
+## How to check
+
+Manual review when:
+
+- the same arbitrary value appears more than once
+- a value is close to an existing config token (use the token)
+- a color, radius, font size, or breakpoint is part of the brand system but
+  missing from config
+
+Inspect `tailwind.config.js` / `tailwind.config.ts` alongside the changed markup.
+
+## How to fix
+
+**Propose** adding the token to the appropriate `theme` / `extend` section, then
+updating markup.
+
+Naming conventions we prefer:
+
+- **Semantic** over literal: `dark-gray`, `linen`, `2sm` — not `gray-4e5357`
+- **Fractional spacing keys** when between scale steps: `4.5`, `5.5`, `6.5`
+- **Descriptive typography** keys: `2sm`, `2.5xl`, `3.5xl`
+- **Nested objects** for color/font variants: `purple.dark`, `purple.DEFAULT`
+
+## Examples
+
+### Bad — repeated arbitrary spacing
+
+```html
+<section class="py-[4.5rem]">…</section>
+<section class="py-[4.5rem]">…</section>
+```
+
+### Good — use or add spacing token
+
+```html
+<section class="py-18">…</section>
+```
+
+### Bad — arbitrary typography
+
+```html
+<p class="text-[0.9375rem] leading-[1.125rem] font-['Freight Pro']">
+```
+
+### Good — config tokens
+
+```html
+<p class="text-2sm font-freight-pro leading-1.2x">
+```
+
+### Bad — arbitrary brand color
+
+```html
+<button class="bg-[#6C5A9F] text-[#FFFFFF]">Shop now</button>
+```
+
+### Good — theme color
+
+```html
+<button class="bg-purple text-white">Shop now</button>
+```

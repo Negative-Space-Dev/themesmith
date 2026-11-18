@@ -1,0 +1,48 @@
+---
+description: "Use when building or editing Shopify Liquid sections/snippets with a {% for %} loop inside another loop, especially over products, variants, collections, blocks, menus, or metafield lists. Avoid expensive nested iteration."
+id: LIQUID-01
+alwaysApply: false
+---
+
+# LIQUID-01 — No nested loops over large collections
+
+## Rationale
+
+Nested iteration over products/variants is O(n·m) and is the most common cause of
+slow or timeout-prone Liquid renders.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check liquid-performance <file>
+```
+
+Flags nested `{% for %}` blocks.
+
+## How to fix
+
+Propose restructuring — precompute a map, use `where`/`map` filters, or limit
+the inner set. Requires judgement; propose rather than auto-edit.
+
+## Examples
+
+### Bad
+
+```liquid
+{% for product in collection.products %}
+  {% for variant in product.variants %}
+    {{ variant.title }}
+  {% endfor %}
+{% endfor %}
+```
+
+### Good
+
+```liquid
+{% for product in collection.products limit: 24 %}
+  {% assign selected_variant = product.selected_or_first_available_variant %}
+  {{ selected_variant.title }}
+{% endfor %}
+```
+
+Or drive the inner set from a scoped setting with an explicit `limit:`.

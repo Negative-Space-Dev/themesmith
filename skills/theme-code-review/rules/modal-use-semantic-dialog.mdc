@@ -1,0 +1,21 @@
+---
+description: "Use when building or editing Shopify modal, drawer, popup, quick-view, newsletter, cart drawer, size guide, or popover UI. Modal containers need semantic <dialog> or role=\"dialog\" markup."
+id: MODAL-01
+alwaysApply: false
+---
+
+# MODAL-01 — Use semantic dialog
+
+## Rationale
+
+Native `<dialog>` or `role="dialog"` + `aria-modal="true"` gives correct semantics.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check modals-dialogs <file>
+```
+
+## How to fix
+
+Propose converting to `<dialog>` or adding the roles.

@@ -1,0 +1,49 @@
+---
+description: "Use when building or editing Shopify Liquid loops that search for one matching product, variant, option, swatch, tag, block, or metafield value. Add {% break %} after the match is found."
+id: LIQUID-09
+alwaysApply: false
+---
+
+# LIQUID-09 — Break loops early when a match is found
+
+## Rationale
+
+When a loop searches for one matching value to assign, continuing after a match
+wastes iterations. Liquid supports `{% break %}` inside loops.
+
+## How to check
+
+Look for `{% for %}` blocks that assign inside `{% if %}` on first match but lack
+`{% break %}` after the assignment.
+
+## How to fix
+
+Add `{% break %}` immediately after the assignment when the match is found. Or
+replace the loop with an array filter (see LIQUID-11).
+
+## Examples
+
+### Bad
+
+```liquid
+{% assign current_color_value = '' %}
+{% assign color_option_values = product.options_with_values[color_index].values %}
+{% for value in color_option_values %}
+  {% if value.name == current_color %}
+    {% assign current_color_value = value.swatch.color.rgb %}
+  {% endif %}
+{% endfor %}
+```
+
+### Good
+
+```liquid
+{% assign current_color_value = '' %}
+{% assign color_option_values = product.options_with_values[color_index].values %}
+{% for value in color_option_values %}
+  {% if value.name == current_color %}
+    {% assign current_color_value = value.swatch.color.rgb %}
+    {% break %}
+  {% endif %}
+{% endfor %}
+```

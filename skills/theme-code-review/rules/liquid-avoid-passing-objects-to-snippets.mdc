@@ -1,0 +1,60 @@
+---
+description: "Use when building or editing Shopify snippets/components rendered with {% render %}, especially product cards, variant UI, badges, media, or price snippets. Pass only the primitive values the snippet needs instead of whole product/variant/collection objects."
+id: LIQUID-07
+alwaysApply: false
+---
+
+# LIQUID-07 — Avoid passing whole objects to snippets
+
+## Rationale
+
+Passing entire objects to `{% render %}` increases processing overhead, reduces
+caching efficiency, and ties snippets to specific object shapes. Pass only the
+primitive values the snippet needs.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check liquid-performance <file>
+```
+
+Flags `{% render %}` calls that pass `variant:`, `product:`, `collection:`, etc.
+
+## How to fix
+
+List the properties the snippet reads and pass them as individual arguments.
+
+## Examples
+
+### Bad
+
+```liquid
+{% for variant in product.variants %}
+  {% render 'price-display', variant: variant %}
+{% endfor %}
+```
+
+```liquid
+{% comment %} snippets/price-display.liquid {% endcomment %}
+{% if variant.compare_at_price > variant.price %}
+  <span class="price-sale">{{ variant.price | money }}</span>
+{% endif %}
+```
+
+### Good
+
+```liquid
+{% for variant in product.variants %}
+  {% render 'price-display',
+      price: variant.price,
+      compare_at_price: variant.compare_at_price %}
+{% endfor %}
+```
+
+```liquid
+{% comment %} snippets/price-display.liquid {% endcomment %}
+{% if compare_at_price and compare_at_price > price %}
+  <span class="price-sale">{{ price | money }}</span>
+  <span class="price-compare">{{ compare_at_price | money }}</span>
+{% endif %}
+```

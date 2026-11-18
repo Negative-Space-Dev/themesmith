@@ -1,0 +1,46 @@
+---
+description: "Use when building or editing Shopify Liquid that references all_products, collections['handle'], collections.handle, linklists, or hardcoded global lookups. Prefer scoped section/block settings or current template objects."
+id: LIQUID-03
+alwaysApply: false
+---
+
+# LIQUID-03 — Avoid unscoped global collection lookups
+
+## Rationale
+
+`all_products`, bare `collections`, and `linklists` are expensive global objects.
+Prefer a scoped section setting (a specific collection/product) instead.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check liquid-performance <file>
+```
+
+Flags these global lookups.
+
+## How to fix
+
+Propose driving the data from a section/block setting (collection picker, product
+reference, or dynamic source).
+
+## Examples
+
+### Bad
+
+```liquid
+{% for product in collections.all.products limit: 4 %}
+  ...
+{% endfor %}
+```
+
+### Good
+
+```liquid
+{% assign featured = section.settings.featured_collection %}
+{% if featured != blank %}
+  {% for product in featured.products limit: section.settings.limit %}
+    ...
+  {% endfor %}
+{% endif %}
+```

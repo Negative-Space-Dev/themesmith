@@ -1,0 +1,19 @@
+---
+description: "Use when building or editing Shopify full-screen modals, drawers, cart drawer, mobile menu, quick-view, or overlay UI. Lock background page scroll while the overlay is open."
+id: MODAL-05
+alwaysApply: false
+---
+
+# MODAL-05 — Prevent background scroll while open
+
+## Rationale
+
+The page behind the modal should not scroll while open.
+
+## How to check
+
+Check for scroll-lock (e.g. `overflow:hidden` on `body`) on open and removal on close.
+
+## How to fix
+
+Propose the scroll-lock toggle paired with open/close.

@@ -1,0 +1,19 @@
+---
+description: "Use when building or editing JavaScript for Shopify modals, drawers, popups, quick-view, cart drawer, or popover UI. Support Escape close and expected backdrop/outside-click dismissal."
+id: MODAL-04
+alwaysApply: false
+---
+
+# MODAL-04 — Close on Escape and backdrop click
+
+## Rationale
+
+Escape-to-close is expected; native `<dialog>` provides Escape for free.
+
+## How to check
+
+Verify an Escape handler (or `<dialog>`) and backdrop dismissal exist.
+
+## How to fix
+
+Propose the handlers, or migrate to `<dialog>` for Escape.

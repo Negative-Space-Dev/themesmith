@@ -1,0 +1,45 @@
+---
+description: "Use when Shopify theme code renders a raw <img> tag or a non-Shopify image source that needs an explicit alt attribute. Do not require alt: on image_tag when the input is a Shopify image object because image_tag uses the object's alt text by default."
+id: IMG-04
+alwaysApply: false
+---
+
+# IMG-04 — Meaningful alt text on raw images; empty alt for decorative
+
+## Rationale
+
+Screen-reader accessibility; raw `<img>` elements need an `alt` attribute, and
+decorative images need `alt=""`.
+
+Shopify's `image_tag` filter is different: when the input is a Shopify image
+object, it uses the object's `alt` text by default. Do not ask for an explicit
+`alt:` argument in that case unless the theme intentionally needs to override
+the object's admin-managed alt text.
+
+## How to check
+
+```bash
+bun "<skill-dir>/scripts/cli.ts" check images <file>
+```
+
+Flags raw `<img>` tags with no `alt` attribute at all. It does not flag
+`image_tag` usage.
+
+## How to fix
+
+**Auto-fix** raw `<img>` when alt can come from a Shopify image source:
+
+- `image.alt`, `media.alt`, or alt on section/block image settings
+- pass an alt variable into snippets that render raw `<img>`
+
+**Do not fix** by adding `alt:` to `{{ image_object | image_tag }}` just to
+mirror `image_object.alt`; that is redundant because `image_tag` already uses
+the Shopify image object's alt text.
+
+**Propose** when the image is not tied to an image/media object (hardcoded assets,
+external URLs, decorative icons). The developer must supply alt text or confirm
+decorative `alt=""` — the agent should not invent content alt.
+
+**Manual check (low severity):** Even when alt is wired from objects, add a
+manual checklist item for the merchant to verify alt text is set correctly on
+those images in Shopify admin.
