@@ -85,7 +85,10 @@ if (spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' })
   if (!commit.ok) run.fail('commit', commit.out)
   run.ok('commit', git('log', '-1', '--format=%h %s').out)
   // Everything uncommitted is saved, so the agent checks this list against what it changed.
-  committed = git('show', '--name-only', '--format=', 'HEAD').out.split('\n').filter(Boolean)
+  // Compared with the branch's previous commit, so a merge lists what it brought in too (`git show` lists nothing
+  // for a merge).
+  const vsParent = git('diff', '--name-only', 'HEAD^1', 'HEAD')
+  committed = (vsParent.ok ? vsParent : git('show', '--name-only', '--format=', 'HEAD')).out.split('\n').filter(Boolean)
 } else {
   run.ok('commit', 'nothing new to commit')
 }

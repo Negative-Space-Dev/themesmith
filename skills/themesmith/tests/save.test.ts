@@ -318,6 +318,8 @@ test('start.ts --update brings main into the work branch as a merge, keeping mai
   expect(code).toBe(0)
   // No rebase: nothing new was on GitHub's copy of the branch.
   expect(result.steps.map((s) => s.step)).not.toContain('pull')
+  // What the merge brought in is listed, for the agent to check.
+  expect((result as { committed?: string[] }).committed).toEqual(['sections/footer.liquid'])
   // The pushed branch has a real merge commit, and main's commit is the same one, not a copy.
   expect(git(remote, 'rev-list', '--parents', '-n', '1', 'hero-text').split(' ')).toHaveLength(3)
   expect(git(remote, 'rev-list', 'hero-text').split('\n')).toContain(mainCommit)

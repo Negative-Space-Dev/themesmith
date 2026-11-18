@@ -15,13 +15,14 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { exec } from './lib/exec.ts'
-import { findRoot, isProtectedBranch, loadProfile } from './lib/profile.ts'
+import { findRoot, isProtectedBranch, loadProfile, parseProfile, PROFILE_PATH, ProfileError, type Profile } from './lib/profile.ts'
 import { Run } from './lib/run.ts'
 
-const root = findRoot()
-const run: Run = new Run(root)
-const profile = loadProfile(root)
 const args = process.argv.slice(2)
+// A branch started before the theme was set up has no profile yet: `--update` reads it from the default branch on
+// GitHub, and the merge then brings it into the branch.
+const { root, profile } = await locate()
+const run: Run = new Run(root)
 const name = args.find((a) => !a.startsWith('--'))
 const keepGoing = args.includes('--continue') || args.includes('--update')
 const setupList = join(root, '.themesmith', 'setup-files.json')
@@ -30,6 +31,24 @@ const setupFiles = existsSync(setupList) ? (JSON.parse(readFileSync(setupList, '
 async function git(...gitArgs: string[]) {
   const r = await exec(['git', ...gitArgs], { cwd: root, timeout: 120_000 })
   return { ok: r.ok, out: r.out }
+}
+
+async function locate(): Promise<{ root: string; profile: Profile }> {
+  try {
+    const root = findRoot()
+    return { root, profile: loadProfile(root) }
+  } catch (error) {
+    if (!(error instanceof ProfileError) || !args.includes('--update')) throw error
+    const top = await exec(['git', 'rev-parse', '--show-toplevel'])
+    if (!top.ok) throw error
+    const root = top.stdout.trim()
+    const head = await exec(['git', 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], { cwd: root })
+    const base = (head.ok && head.stdout.trim().replace(/^origin\//, '')) || 'main'
+    await exec(['git', 'fetch', 'origin', base], { cwd: root, timeout: 120_000 })
+    const shown = await exec(['git', 'show', `origin/${base}:${PROFILE_PATH}`], { cwd: root })
+    if (!shown.ok) throw error
+    return { root, profile: parseProfile(JSON.parse(shown.stdout)) }
+  }
 }
 
 if (profile.mode !== 'github') run.fail('mode', 'This theme uses CLI mode. Start with `theme.ts start` instead.')

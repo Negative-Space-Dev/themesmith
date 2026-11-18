@@ -234,3 +234,33 @@ test('names a development theme after its branch, and connected themes the way S
   expect(connectedName('acme', 'main-5')).toBe('acme/main-5')
   expect(connectedName('acme', 'search-bar-warranty-form-text-box-zoom-fix-371')).toBe('acme/search-bar-warranty-form-text-box-zoom-fix...')
 })
+
+test('start.ts --update works on a branch started before the theme was set up', () => {
+  const remote = join(dir, 'remote.git')
+  git(dir, 'init', '-q', '--bare', '-b', 'main', remote)
+  git(repo, 'remote', 'add', 'origin', remote)
+  write('sections/hero.liquid', '<h1>Hi</h1>\n')
+  commit('init')
+  git(repo, 'push', '-q', '-u', 'origin', 'main')
+  git(repo, 'remote', 'set-head', 'origin', 'main')
+  // Work started before setup, so this branch has no profile.
+  git(repo, 'switch', '-qc', 'old-work')
+  write('sections/hero.liquid', '<h1>Old work</h1>\n')
+  commit('Old work')
+  // Setup happened on main afterwards.
+  git(repo, 'switch', '-q', 'main')
+  profile()
+  commit('Set up themesmith')
+  git(repo, 'push', '-q', 'origin', 'main')
+  git(repo, 'switch', '-q', 'old-work')
+  expect(existsSync(join(repo, '.agents/themesmith.json'))).toBe(false)
+
+  const r = script('start.ts', '--update').json()
+  expect(r.ok).toBe(true)
+  // The merge brought the profile in, ready for the save that commits it.
+  expect(existsSync(join(repo, '.agents/themesmith.json'))).toBe(true)
+  expect(existsSync(join(repo, '.git/MERGE_HEAD'))).toBe(true)
+  // Without --update, a branch without a profile still needs setup.
+  git(repo, 'merge', '--abort')
+  expect(script('start.ts', '--continue').code).not.toBe(0)
+})
