@@ -9,14 +9,14 @@ stable across runs. Order findings by severity: blocker → high → medium → 
 **Checked:** <applicable categories, e.g. `images`, `video`, `liquid-performance`>  
 **Skipped:** <categories filtered out by applies-when, or `_None_`>  
 **Result:**  
-  🪄 <N> automatically fixed  
+  🪄 <N> automatic fixes  
   🛠️ <M> fixes proposed  
   👀 <K> manual review  
   ✅ <J> passed
 
 <!-- Each Result line starts with two non-breaking spaces (U+00A0, kept by Markdown, unlike plain spaces) and ends with two spaces for a line break, so the emojis line up like bullets. Keep all four lines, with 0 where a count is zero. -->
 
-## 🪄 Applied Fixes
+## 🪄 Automatic Fixes
 
 Already applied because the edit was deterministic. Re-checked after applying.
 
