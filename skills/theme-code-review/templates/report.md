@@ -9,7 +9,7 @@ stable across runs. Order findings by severity: blocker → high → medium → 
 **Checked:** <applicable categories, e.g. `images`, `video`, `liquid-performance`>  
 **Skipped:** <categories filtered out by applies-when, or `_None_`>  
 **Result:**  
-  🪄 <N> fixed  
+  🪄 <N> automatically fixed  
   🛠️ <M> fixes proposed  
   👀 <K> manual review  
   ✅ <J> passed
