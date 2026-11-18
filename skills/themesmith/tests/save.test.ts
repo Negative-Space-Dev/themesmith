@@ -226,3 +226,62 @@ test('checks what Git is about to save for dev mode, not only the folder', () =>
   expect(result.steps.at(-1)).toMatchObject({ step: 'dev mode check', ok: false })
   expect(existsSync(join(shop, 'themes/101'))).toBe(false)
 })
+
+// Someone else's commit on the branch on GitHub that changes the same line as this work.
+function conflictingGitHubCommit() {
+  const other = join(dir, 'other')
+  git(dir, 'clone', '-q', '-b', 'hero-text', remote, other)
+  git(other, 'config', 'user.email', 'bot@example.com')
+  git(other, 'config', 'user.name', 'shopify[bot]')
+  writeFileSync(join(other, 'sections/hero.liquid'), '<h1>From the editor</h1>\n')
+  git(other, 'commit', '-qam', 'Update from Shopify')
+  git(other, 'push', '-q')
+}
+
+test('lists what GitHub has that a force-push would drop, and replaces it only with --force-with-lease', () => {
+  writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>New</h1>\n')
+  save('--message', 'Update hero text')
+  conflictingGitHubCommit()
+
+  writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>Mine</h1>\n')
+  const stopped = save('--message', 'Tweak hero text') as { code: number; result: { ok: boolean; githubOnly?: string[]; steps: { step: string }[] } }
+  expect(stopped.code).toBe(1)
+  expect(stopped.result.steps.at(-1)).toMatchObject({ step: 'pull', ok: false })
+  expect(stopped.result.githubOnly).toHaveLength(1)
+  expect(stopped.result.githubOnly![0]).toEndWith(' Update from Shopify')
+  expect(git(remote, 'log', '-1', '--format=%s', 'hero-text')).toBe('Update from Shopify')
+
+  // The person confirmed replacing it.
+  const forced = save('--message', 'Tweak hero text', '--force-with-lease')
+  expect(forced.code).toBe(0)
+  expect(forced.result.steps.find((s) => s.step === 'push')!.detail).toContain('replacing 1 commit(s) that were only on GitHub')
+  expect(git(remote, 'log', '--format=%s', 'hero-text').split('\n').slice(0, 2)).toEqual(['Tweak hero text', 'Update hero text'])
+  expect(git(remote, 'show', 'hero-text:sections/hero.liquid')).toBe('<h1>Mine</h1>')
+})
+
+test('a force-push with lease replaces nothing when someone pushed after the save fetched the branch', () => {
+  writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>New</h1>\n')
+  save('--message', 'Update hero text')
+  conflictingGitHubCommit()
+  // Someone pushes again while this save is building, after it fetched the branch.
+  const other = join(dir, 'other')
+  writeFileSync(join(other, 'sections/late.liquid'), 'late\n')
+  git(other, 'add', '-A')
+  git(other, 'commit', '-qm', 'Pushed during the build')
+  setProfile(`${fixBuild} && sleep 1 && git -C "${other}" push -q`)
+
+  writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>Mine</h1>\n')
+  const { code, result } = save('--message', 'Tweak hero text', '--force-with-lease')
+  expect(code).toBe(1)
+  expect(result.steps.at(-1)).toMatchObject({ step: 'push', ok: false })
+  expect(git(remote, 'log', '-1', '--format=%s', 'hero-text')).toBe('Pushed during the build')
+})
+
+test('never force-pushes a protected branch, even when asked', () => {
+  git(repo, 'checkout', '-q', 'main')
+  writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>New</h1>\n')
+  const { code, result } = save('--message', 'Update hero text', '--force-with-lease', '--onto-protected-branch')
+  expect(code).toBe(1)
+  expect(result.steps.at(-1)).toMatchObject({ step: 'branch', ok: false })
+  expect(git(remote, 'log', '-1', '--format=%s', 'main')).toBe('init')
+})

@@ -5,6 +5,9 @@
 // fetch and the theme lookup run while the build and checks do.
 // Usage: bun save.ts --message "Update homepage hero text" [--no-push]
 //        [--onto-protected-branch]  only after the person explicitly confirmed this push to a protected branch
+//        [--force-with-lease]       only after the person explicitly confirmed replacing what is on GitHub for this
+//                                   work branch (never a protected one): it overwrites the branch on GitHub, but only
+//                                   if nobody pushed to it since this save fetched it
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -53,6 +56,10 @@ if (!message) run.fail('arguments', 'Pass --message "<what changed, in plain wor
 const profile = loadProfile(root)
 const branch = git('branch', '--show-current').out
 if (!branch) run.fail('branch', 'Not on a branch (detached HEAD). Create or switch to a branch first.')
+const forceWithLease = process.argv.includes('--force-with-lease')
+if (forceWithLease && isProtectedBranch(profile, branch)) {
+  run.fail('branch', `"${branch}" is protected, so it is never force-pushed. Nothing was saved. The person can do that on GitHub themselves.`)
+}
 if (isProtectedBranch(profile, branch) && !process.argv.includes('--onto-protected-branch')) {
   run.fail('branch', `"${branch}" is protected. Create a new branch for this work before saving.`)
 }
@@ -87,11 +94,19 @@ if (!push) run.finish({ committed })
 
 const remote = await fetched!
 if (!remote.ok && !/couldn't find remote ref/i.test(remote.out)) run.fail('pull', `Could not get "${branch}" from GitHub:\n${remote.out}`)
-if (remote.ok) {
+// What GitHub has on this branch that this folder doesn't: what a force-push would drop.
+const githubOnly = () => git('log', '--format=%h %s', `HEAD..origin/${branch}`).out.split('\n').filter(Boolean)
+// The version of the branch this save fetched: a force-push replaces only that, never anything pushed since.
+const lease = remote.ok ? git('rev-parse', `origin/${branch}`).out : null
+if (remote.ok && !forceWithLease) {
   const pull = git('rebase', `origin/${branch}`)
   if (!pull.ok) {
     git('rebase', '--abort')
-    run.fail('pull', `Someone else changed "${branch}" and it conflicts with this work:\n${pull.out}`)
+    run.fail(
+      'pull',
+      `Someone else changed "${branch}" on GitHub and it conflicts with this work. Combine their changes with this work and save again. Only if the person confirms that what is on GitHub should be replaced, save with --force-with-lease, which drops the GitHub commits listed in githubOnly.\n${pull.out}`,
+      { githubOnly: githubOnly() }
+    )
   }
   run.ok('pull')
 }
@@ -103,9 +118,17 @@ const head = git('symbolic-ref', '--short', 'refs/remotes/origin/HEAD')
 const mergeBase = git('merge-base', 'HEAD', head.ok ? head.out : 'origin/main')
 const files = await changedThemeFiles(root, remote.ok ? `origin/${branch}` : mergeBase.ok ? mergeBase.out : null)
 
-const pushed = git('push', '-u', 'origin', branch)
-if (!pushed.ok) run.fail('push', pushed.out)
-run.ok('push', `origin/${branch}`)
+const dropped = forceWithLease && lease ? githubOnly() : []
+const pushed = forceWithLease && lease ? git('push', `--force-with-lease=${branch}:${lease}`, '-u', 'origin', branch) : git('push', '-u', 'origin', branch)
+if (!pushed.ok) {
+  run.fail(
+    'push',
+    forceWithLease && /stale info|rejected/.test(pushed.out)
+      ? `Someone pushed to "${branch}" after this save fetched it, so nothing was replaced. Save again to see their changes.`
+      : pushed.out
+  )
+}
+run.ok('push', dropped.length ? `origin/${branch}, replacing ${dropped.length} commit(s) that were only on GitHub: ${dropped.join('; ')}` : `origin/${branch}`)
 
 const found = await themesFound!
 if (!found.ok) failWith(found)

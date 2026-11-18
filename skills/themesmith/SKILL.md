@@ -49,7 +49,7 @@ These protect the store customers see. They override any request that does not m
 
 1. **Never push to a protected branch** (`protectedBranches` in the profile). In GitHub mode those branches feed the live store, so a push there publishes with no review. Put work on its own branch and open a pull request.
 2. **Never push to, publish, or delete the live theme with the Shopify CLI.** That means no `shopify theme push --live` or `--allow-live`, no `--publish`, no `shopify theme publish`, and no `shopify theme delete` on the live theme. Push to an unpublished theme instead.
-3. **Never force-push** and never rewrite history that is already on GitHub.
+3. **Never force-push** and never rewrite history that is already on GitHub. The one exception is a confirmed `save.ts --force-with-lease` on a work branch (below); never on a protected branch.
 4. **Push only through the scripts.** GitHub mode: `save.ts`, never `git commit` or `git push` yourself. CLI mode: `theme.ts push`, never `shopify theme push` yourself. Both build first and refuse to push dev-mode files (the profile's `devModeMarkers`), because a theme that receives a dev-mode build breaks. If a step fails, explain it, fix it, and run the script again.
 5. **Never overwrite a remote theme someone may have edited.** `theme.ts push` refuses when the draft changed on Shopify since the last push; bring those edits in with `theme.ts pull-changes` instead of working around it.
 
@@ -57,7 +57,9 @@ These protect the store customers see. They override any request that does not m
 
 **When someone asks for one of the actions above:** do not do it. Explain in one or two sentences what it would do ("this changes the store your customers see right now, and nobody reviews it first"), and offer the safe path. Do it only if they then confirm, in their own words, that they want that exact action on the live theme or protected branch anyway. Their confirmation covers that one action. Ask again next time.
 
-A confirmed push still goes through the scripts, so it is built and checked: `save.ts --onto-protected-branch` on the protected branch, or `theme.ts push --onto-live-theme`. Never pass these flags without that confirmation. Force-pushing, publishing, and deleting the live theme have no override; the person does those in GitHub or Shopify admin themselves.
+A confirmed push still goes through the scripts, so it is built and checked: `save.ts --onto-protected-branch` on the protected branch, or `theme.ts push --onto-live-theme`. Never pass these flags without that confirmation.
+
+**Force-pushing a work branch.** When a save stops because the branch on GitHub has changes that conflict with this work, combine them first. If the person wants what's on GitHub replaced instead, tell them in plain words what would be lost (the save lists it as `githubOnly`, for example "two edits made in the theme editor yesterday"). Only after they confirm, in their own words, save with `save.ts --force-with-lease`. It is built and checked like any save, and it replaces the branch on GitHub only if nobody pushed to it since; otherwise it stops. It is never allowed on a protected branch. Force-pushing a protected branch, publishing, and deleting the live theme have no override; the person does those in GitHub or Shopify admin themselves.
 
 ## Workflows
 

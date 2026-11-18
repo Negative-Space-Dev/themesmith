@@ -20,7 +20,7 @@ function block(profile: Profile): string {
   const branches = profile.protectedBranches.map((b) => `\`${b}\``).join(', ')
   const rules =
     profile.mode === 'github'
-      ? `Never push to ${branches} unless the person confirms it the way the skill's safety rules require, never force-push, and never run \`git commit\` or \`git push\` yourself; the skill's save script does that.`
+      ? `Never push to ${branches} unless the person confirms it the way the skill's safety rules require, never force-push except the skill's confirmed force-push with lease on a work branch, and never run \`git commit\` or \`git push\` yourself; the skill's save script does that.`
       : "Never push to the live theme unless the person confirms it the way the skill's safety rules require, never publish or delete the live theme, and never run `shopify theme push` yourself; the skill's theme script pushes to an unpublished draft."
   // One install per computer covers every theme on it, and one `git pull` updates them all.
   const install = [
