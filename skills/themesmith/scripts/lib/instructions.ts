@@ -32,7 +32,9 @@ function block(profile: Profile): string {
     '',
     'Agents only find new skills in a new session: ask the person to start one, and make the request there.',
   ].join('\n')
-  return `${BLOCK_START}\n## Shopify theme work\n\nUse the themesmith skill for any change to this theme and for previewing, saving, or publishing it. ${rules} If someone asks for one of these, follow the skill's rule for that request instead of doing it.\n\n${install}\n${BLOCK_END}\n`
+  // In the shape Prettier gives Markdown (a blank line after the start marker), so formatting AGENTS.md on save
+  // leaves it as it is.
+  return `${BLOCK_START}\n\n## Shopify theme work\n\nUse the themesmith skill for any change to this theme and for previewing, saving, or publishing it. ${rules} If someone asks for one of these, follow the skill's rule for that request instead of doing it.\n\n${install}\n${BLOCK_END}\n`
 }
 
 function nextAgentsMd(root: string, profile: Profile): { path: string; existing: string; next: string } {
@@ -42,11 +44,16 @@ function nextAgentsMd(root: string, profile: Profile): { path: string; existing:
   const found = MARKERS.map(([open, close]) => ({ start: existing.indexOf(open), end: existing.indexOf(close), close })).find(
     (m) => m.start !== -1 && m.end > m.start
   )
+  // A block that differs only in spacing or line breaks, as a formatter may leave it, is already right.
+  const current = found ? existing.slice(found.start, found.end + found.close.length) : null
+  if (current !== null && found!.close === BLOCK_END && sameWords(current, text)) return { path, existing, next: existing }
   const next = found
     ? `${existing.slice(0, found.start)}${text}${existing.slice(found.end + found.close.length).replace(/^\r?\n/, '')}`
     : `${existing}${existing === '' || existing.endsWith('\n\n') ? '' : existing.endsWith('\n') ? '\n' : '\n\n'}${text}`
   return { path, existing, next }
 }
+
+const sameWords = (a: string, b: string) => a.split(/\s+/).filter(Boolean).join(' ') === b.split(/\s+/).filter(Boolean).join(' ')
 
 function claudeImports(root: string): boolean {
   const path = join(root, 'CLAUDE.md')

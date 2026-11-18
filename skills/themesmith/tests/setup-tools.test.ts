@@ -74,7 +74,7 @@ test('writes the rules block to AGENTS.md and makes CLAUDE.md import it, keeping
   expect(setup().missingInstructions).toEqual(['AGENTS.md', 'CLAUDE.md'])
   setup('--apply')
   const agents = readFileSync(join(repo, 'AGENTS.md'), 'utf8')
-  expect(agents.startsWith('# Notes\n\nKeep the hero image.\n\n<!-- themesmith:start -->\n## Shopify theme work\n')).toBe(true)
+  expect(agents.startsWith('# Notes\n\nKeep the hero image.\n\n<!-- themesmith:start -->\n\n## Shopify theme work\n')).toBe(true)
   expect(agents).toContain("Never push to `main*` unless the person confirms it the way the skill's safety rules require, never force-push")
   expect(readFileSync(join(repo, 'CLAUDE.md'), 'utf8')).toBe('@AGENTS.md\n\nUse tabs.\n')
   expect(setup().missingInstructions).toEqual([])
@@ -96,7 +96,7 @@ test('moves a theme set up under the theme-dev name to the themesmith names, and
   expect(readFileSync(join(repo, '.shopifyignore'), 'utf8').startsWith('.agents/**\r\n.themesmith/**\r\n')).toBe(true)
   const agents = readFileSync(join(repo, 'AGENTS.md'), 'utf8')
   expect(agents).not.toContain('theme-dev')
-  expect(agents.startsWith('# Notes\n\n<!-- themesmith:start -->\n## Shopify theme work\n\nUse the themesmith skill')).toBe(true)
+  expect(agents.startsWith('# Notes\n\n<!-- themesmith:start -->\n\n## Shopify theme work\n\nUse the themesmith skill')).toBe(true)
   expect(agents.endsWith('<!-- themesmith:end -->\n\nMore notes.\n')).toBe(true)
   expect(setup().missingInstructions).toEqual([])
 })
@@ -110,4 +110,19 @@ test('the rules block tells an agent without the skill how to install it for the
   expect(agents).not.toContain('private')
   expect(agents).toContain('3. `bun ~/themesmith/install.ts`')
   expect(agents).toContain('ask the person to start one')
+})
+
+test('a rules block a formatter reshaped still counts as written', () => {
+  write('.agents/themesmith.json', JSON.stringify({ store: 'example.myshopify.com', mode: 'github', protectedBranches: ['main'] }))
+  setup('--apply')
+  const written = readFileSync(join(repo, 'AGENTS.md'), 'utf8')
+  // Written the way Prettier formats Markdown: a blank line after the start marker.
+  expect(written).toStartWith('<!-- themesmith:start -->\n\n## Shopify theme work\n')
+  // Reflowed by a formatter (different line breaks and spacing, same words): nothing to do.
+  write('AGENTS.md', written.replace(/\n\n## Shopify theme work\n\n/, '\n## Shopify theme work\n').replace(/\. /g, '.\n'))
+  expect(setup().missingInstructions).toEqual([])
+  expect(setup('--apply').applied.filter((a) => a.includes('AGENTS.md'))).toEqual([])
+  // Changed words are still noticed.
+  write('AGENTS.md', written.replace('Never push', 'Always push'))
+  expect(setup().missingInstructions).toEqual(['AGENTS.md'])
 })
