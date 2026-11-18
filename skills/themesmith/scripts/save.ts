@@ -98,17 +98,22 @@ if (!remote.ok && !/couldn't find remote ref/i.test(remote.out)) run.fail('pull'
 const githubOnly = () => git('log', '--format=%h %s', `HEAD..origin/${branch}`).out.split('\n').filter(Boolean)
 // The version of the branch this save fetched: a force-push replaces only that, never anything pushed since.
 const lease = remote.ok ? git('rev-parse', `origin/${branch}`).out : null
-if (remote.ok && !forceWithLease) {
-  const pull = git('rebase', `origin/${branch}`)
+// Combining with GitHub happens only when GitHub has something new. Unpushed work that includes a merge commit
+// (bringing the base branch in, say) is merged with it, since a rebase would flatten the merge and copy the base
+// branch's commits; otherwise it is rebased, for a straight history.
+const newOnGitHub = remote.ok && !forceWithLease ? githubOnly() : []
+if (newOnGitHub.length > 0) {
+  const hasMerge = git('rev-list', '--merges', '--max-count=1', `origin/${branch}..HEAD`).out !== ''
+  const pull = hasMerge ? git('merge', '--no-edit', `origin/${branch}`) : git('rebase', `origin/${branch}`)
   if (!pull.ok) {
-    git('rebase', '--abort')
+    git(hasMerge ? 'merge' : 'rebase', '--abort')
     run.fail(
       'pull',
       `Someone else changed "${branch}" on GitHub and it conflicts with this work. Combine their changes with this work and save again. Only if the person confirms that what is on GitHub should be replaced, save with --force-with-lease, which drops the GitHub commits listed in githubOnly.\n${pull.out}`,
-      { githubOnly: githubOnly() }
+      { githubOnly: newOnGitHub }
     )
   }
-  run.ok('pull')
+  run.ok('pull', `brought in ${newOnGitHub.length} commit(s) from GitHub by ${hasMerge ? 'merging' : 'rebasing'}`)
 }
 const pushing = devModeIn('HEAD')
 if (pushing.length > 0) run.fail('dev mode check', `What would be pushed has dev-mode files: ${pushing.join('; ')}. Nothing was pushed.`)

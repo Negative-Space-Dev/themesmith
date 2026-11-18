@@ -37,6 +37,16 @@ Every save also updates the branch's preview on the store and prints its `previe
 
 `bun <skill>/scripts/preview.ts` prints the branch's preview links again.
 
+## Bring in the latest main
+
+When the person asks to update the work with the latest main, or a pull request says the branch is out of date:
+
+```bash
+bun <skill>/scripts/start.ts --update
+```
+
+It merges the latest default branch into this work branch without committing. Then save, with a message like "Bring in the latest main": the save builds and checks the result and commits it as a merge, keeping both histories as they are. Never rebase onto main yourself: that rewrites commits already on GitHub. If it stops with `conflicts`, combine both versions in each listed file (remove the `<<<<<<<`, `=======`, `>>>>>>>` markers), check the preview, then save. If the person would rather not, `git merge --abort` backs out.
+
 ## Finish
 
 Follow `references/finish.md`. Merging the pull request publishes the change, so leave the merge to the person or their reviewer unless they explicitly ask you to merge.

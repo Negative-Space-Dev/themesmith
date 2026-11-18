@@ -1,6 +1,8 @@
 // GitHub mode: begin a piece of work. Prints JSON naming each step. The first save makes the preview.
 //   bun start.ts <short-name>     a new branch from the latest default branch, e.g. fall-sale-banner
 //   bun start.ts --continue       keep working on the current branch
+//   bun start.ts --update         bring the latest default branch into this work branch: merges it without
+//                                 committing, so the next save builds, checks and commits it as a merge
 //   add --new to start a new branch even though the current one has work of its own
 //   add --carry or --leave when other uncommitted changes are in the way (see below)
 // Files setup changed (listed in .themesmith/setup-files.json) are committed first as "Set up themesmith",
@@ -21,7 +23,7 @@ const run: Run = new Run(root)
 const profile = loadProfile(root)
 const args = process.argv.slice(2)
 const name = args.find((a) => !a.startsWith('--'))
-const keepGoing = args.includes('--continue')
+const keepGoing = args.includes('--continue') || args.includes('--update')
 const setupList = join(root, '.themesmith', 'setup-files.json')
 const setupFiles = existsSync(setupList) ? (JSON.parse(readFileSync(setupList, 'utf8')) as string[]) : []
 
@@ -34,13 +36,14 @@ if (profile.mode !== 'github') run.fail('mode', 'This theme uses CLI mode. Start
 if (!name && !keepGoing) run.fail('arguments', 'Pass a short name for the work, like fall-sale-banner, or --continue.')
 
 const [current, head] = await Promise.all([git('branch', '--show-current'), git('symbolic-ref', '--short', 'refs/remotes/origin/HEAD')])
-const base = head.out.replace(/^origin\//, '') || 'main'
+const base = (head.ok && head.out.replace(/^origin\//, '')) || 'main'
 // The fetch runs while the current branch is inspected.
 const fetched = keepGoing ? null : git('fetch', 'origin', base)
 
 if (keepGoing) {
   if (!current.out || isProtectedBranch(profile, current.out)) run.fail('branch', `"${current.out || 'this commit'}" is protected, so work can't continue on it. Pass a name to start a new branch.`)
   run.ok('branch', `continuing on ${current.out}`)
+  if (args.includes('--update')) await bringInBase()
 } else {
   const branch = name!.toLowerCase().replace(/[^a-z0-9/-]+/g, '-').replace(/^-+|-+$/g, '')
   if (current.out && !isProtectedBranch(profile, current.out) && !args.includes('--new')) {
@@ -89,6 +92,32 @@ if (existsSync(setupList)) {
 }
 
 run.finish()
+
+// Merges the latest default branch into this work branch without committing, so `save.ts` builds and checks the
+// result and commits it as a merge commit, keeping both histories as they are. A rebase onto it would rewrite
+// commits already on GitHub, which would need a force-push.
+async function bringInBase() {
+  const others = await uncommittedOutsideSetup()
+  if (others.length > 0) {
+    run.fail('update', 'Save or set aside the unsaved changes first, so bringing in the latest work stays separate from them.', { files: others })
+  }
+  const fetch = await git('fetch', 'origin', base)
+  if (!fetch.ok) run.fail('fetch', `Could not get the latest "${base}" from GitHub:\n${fetch.out}`)
+  const behind = await git('rev-list', '--count', `HEAD..origin/${base}`)
+  if (behind.out.trim() === '0') run.finish({ update: `already has everything from ${base}` })
+  const merged = await git('merge', '--no-commit', '--no-ff', `origin/${base}`)
+  const conflicts = (await exec(['git', 'diff', '--name-only', '--diff-filter=U'], { cwd: root })).stdout.split('\n').filter(Boolean)
+  if (conflicts.length > 0) {
+    run.fail(
+      'update',
+      `The latest "${base}" changes the same lines as this work in these files. Combine both versions in each (remove the <<<<<<< ======= >>>>>>> markers), then save. To back out instead, run \`git merge --abort\`.`,
+      { conflicts }
+    )
+  }
+  if (!merged.ok) run.fail('update', merged.out)
+  run.ok('update', `brought in ${behind.out.trim()} commit(s) from ${base}; save next, to build, check and commit them`)
+  run.finish()
+}
 
 // Changed, added or deleted files Git would carry to a new branch, other than setup's (a listed file, or a file
 // inside a listed folder) and themesmith's own state in .themesmith/. Ignored files never move, so they don't

@@ -285,3 +285,75 @@ test('never force-pushes a protected branch, even when asked', () => {
   expect(result.steps.at(-1)).toMatchObject({ step: 'branch', ok: false })
   expect(git(remote, 'log', '-1', '--format=%s', 'main')).toBe('init')
 })
+
+const start = (...args: string[]) => {
+  const r = spawnSync('bun', [join(SKILL_DIR, 'scripts/start.ts'), ...args], { cwd: repo, encoding: 'utf8', env: env() })
+  return JSON.parse(r.stdout) as { ok: boolean; conflicts?: string[]; steps: { step: string; ok: boolean; detail?: string }[] }
+}
+
+// New commits on main on GitHub, made after the work branch started.
+function advanceMain(file: string, content: string) {
+  const other = join(dir, 'main-work')
+  if (!existsSync(other)) git(dir, 'clone', '-q', '-b', 'main', remote, other)
+  git(other, 'config', 'user.email', 'dev@example.com')
+  git(other, 'config', 'user.name', 'Dev')
+  git(other, 'pull', '-q')
+  mkdirSync(join(other, file, '..'), { recursive: true })
+  writeFileSync(join(other, file), content)
+  git(other, 'add', '-A')
+  git(other, 'commit', '-qm', `Change ${file} on main`)
+  git(other, 'push', '-q')
+  return git(other, 'rev-parse', 'HEAD')
+}
+
+test('start.ts --update brings main into the work branch as a merge, keeping main\'s commits as they are', () => {
+  writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>New</h1>\n')
+  save('--message', 'Update hero text')
+  const mainCommit = advanceMain('sections/footer.liquid', '<p>Footer from main</p>\n')
+
+  const updated = start('--update')
+  expect(updated.ok).toBe(true)
+  expect(updated.steps.at(-1)!.detail).toContain('brought in 1 commit(s) from main')
+  const { code, result } = save('--message', 'Bring in the latest main')
+  expect(code).toBe(0)
+  // No rebase: nothing new was on GitHub's copy of the branch.
+  expect(result.steps.map((s) => s.step)).not.toContain('pull')
+  // The pushed branch has a real merge commit, and main's commit is the same one, not a copy.
+  expect(git(remote, 'rev-list', '--parents', '-n', '1', 'hero-text').split(' ')).toHaveLength(3)
+  expect(git(remote, 'rev-list', 'hero-text').split('\n')).toContain(mainCommit)
+  expect(git(remote, 'log', '--format=%s', 'hero-text').split('\n').filter((s) => s === 'Change sections/footer.liquid on main')).toHaveLength(1)
+  expect(git(remote, 'show', 'hero-text:sections/footer.liquid')).toBe('<p>Footer from main</p>')
+})
+
+test('a merge commit survives when GitHub has new commits on the branch too', () => {
+  writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>New</h1>\n')
+  save('--message', 'Update hero text')
+  const mainCommit = advanceMain('sections/footer.liquid', '<p>Footer from main</p>\n')
+  // Meanwhile a theme editor commit lands on the work branch on GitHub.
+  const editor = join(dir, 'editor')
+  git(dir, 'clone', '-q', '-b', 'hero-text', remote, editor)
+  git(editor, 'config', 'user.email', 'bot@example.com')
+  git(editor, 'config', 'user.name', 'shopify[bot]')
+  mkdirSync(join(editor, 'config'), { recursive: true })
+  writeFileSync(join(editor, 'config/settings_data.json'), '{}\n')
+  git(editor, 'add', '-A')
+  git(editor, 'commit', '-qm', 'Update from Shopify')
+  git(editor, 'push', '-q')
+
+  start('--update')
+  const { code, result } = save('--message', 'Bring in the latest main')
+  expect(code).toBe(0)
+  expect(result.steps.find((s) => s.step === 'pull')!.detail).toContain('by merging')
+  expect(git(remote, 'rev-list', 'hero-text').split('\n')).toContain(mainCommit)
+  expect(git(remote, 'log', '--format=%s', 'hero-text')).toContain('Update from Shopify')
+})
+
+test('start.ts --update stops on conflicts, listing the files to combine', () => {
+  writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>New</h1>\n')
+  save('--message', 'Update hero text')
+  advanceMain('sections/hero.liquid', '<h1>From main</h1>\n')
+  const r = start('--update')
+  expect(r.ok).toBe(false)
+  expect(r.conflicts).toEqual(['sections/hero.liquid'])
+  expect(readFileSync(join(repo, 'sections/hero.liquid'), 'utf8')).toContain('<<<<<<<')
+})
