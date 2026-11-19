@@ -174,7 +174,8 @@ test('theme-check.ts checks only the changed theme files, skipping built ones', 
 })
 
 test('dev.ts starts the preview in the background and finds pages to preview new templates on', async () => {
-  installShopify(`const port = 20000 + Math.floor(Math.random() * 20000)
+  installShopify(`require('fs').writeFileSync(${JSON.stringify(join(dir, 'cli-started'))}, process.argv.slice(2).join(' '))
+const port = 20000 + Math.floor(Math.random() * 20000)
 Bun.serve({ port, fetch: () => new Response('<a href="/pages/about">About</a><a href="/products/widget">Widget</a>', { headers: { 'content-type': 'text/html' } }) })
 console.log('Preview your theme: http://127.0.0.1:' + port)
 console.log('Share your theme preview (https://example.myshopify.com/?preview_theme_id=123)')
@@ -187,7 +188,9 @@ console.log('Share your theme preview (https://example.myshopify.com/?preview_th
   try {
     started = run.json()
   } catch {
-    throw new Error(`dev.ts printed no JSON (exit ${run.code}):\n${run.stdout}\n${run.stderr}\npreview log:\n${log(0)}`)
+    const cli = existsSync(join(dir, 'cli-started')) ? `ran with: ${readFileSync(join(dir, 'cli-started'), 'utf8')}` : 'never ran'
+    const state = existsSync(join(repo, '.themesmith/dev.json')) ? readFileSync(join(repo, '.themesmith/dev.json'), 'utf8') : '(no dev.json)'
+    throw new Error(`dev.ts printed no JSON (exit ${run.code}):\n${run.stdout}\n${run.stderr}\npreview log:\n${log(0)}\nfake CLI ${cli}\n${state}`)
   }
   expect(started).toMatchObject({ ok: true, share: 'https://example.myshopify.com/?preview_theme_id=123', samples: { page: '/pages/about', product: '/products/widget', collection: null } })
   expect((await fetch(started.preview)).ok).toBe(true)

@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { bunCommand, installFakeShopify, pathWith, removeDir } from './helpers.ts'
+import { bunCommand, installFakeShopify, pathWith, removeDir, windows } from './helpers.ts'
 
 const SKILL_DIR = resolve(import.meta.dir, '..')
 const DEV_TAG = '<script src="http://127.0.0.1:5173/main.ts"></script>\n'
@@ -187,7 +187,9 @@ test('uses the theme Shopify connected to the branch once the push reaches it', 
   const connected = join(shop, 'themes/200')
   // Git runs hooks with its own sh, also on Windows, where that sh wants forward slashes.
   const to = connected.replace(/\\/g, '/')
-  writeFileSync(join(remote, 'hooks/post-receive'), `#!/bin/sh\nwhile read old new ref; do mkdir -p "${to}" && git archive "$new" | tar -x -C "${to}"; done\n`)
+  // Git's tar on Windows reads "C:/…" as a remote host unless told the path is local.
+  const tar = windows ? 'tar --force-local' : 'tar'
+  writeFileSync(join(remote, 'hooks/post-receive'), `#!/bin/sh\nwhile read old new ref; do mkdir -p "${to}" && git archive "$new" | ${tar} -x -C "${to}"; done\n`)
   chmodSync(join(remote, 'hooks/post-receive'), 0o755)
   // An earlier save, before the branch was connected, made a development theme for it.
   writeFileSync(

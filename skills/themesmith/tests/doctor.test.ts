@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import { stopDetached } from '../scripts/lib/exec.ts'
 import { installFakeShopify, pathWith, removeDir } from './helpers.ts'
 
 const DOCTOR = resolve(import.meta.dir, '../scripts/doctor.ts')
@@ -78,7 +79,18 @@ beforeEach(() => {
   write(join(theme, 'sections/hero.liquid'), '<h1>Hi</h1>\n')
 })
 
-afterEach(() => removeDir(dir))
+afterEach(() => {
+  // --fix starts the full Theme Check and sign-ins in the background, in the theme's folder; stop them first, so the
+  // folder can go (Windows won't remove a folder a process is using).
+  const jobs = join(theme, '.themesmith/jobs')
+  for (const f of existsSync(jobs) ? readdirSync(jobs).filter((f) => f.endsWith('.json')) : []) {
+    try {
+      const { pid } = JSON.parse(readFileSync(join(jobs, f), 'utf8')) as { pid?: number }
+      if (pid) stopDetached(pid)
+    } catch {}
+  }
+  removeDir(dir)
+})
 
 test('flags a Shopify CLI older than 5.0 in the chart', () => {
   installShopify('4.9.4')
