@@ -23,14 +23,24 @@ function git(...args: string[]) {
   return { ok: r.status === 0, out: `${r.stdout ?? ''}${r.stderr ?? ''}`.trim() }
 }
 
-// Porcelain lines start with a status column that may be a space, so the output must not be trimmed.
+// Changed and new files, by their real names: -z keeps Git from quoting names with spaces or accents. A rename is
+// followed by its old name, which is skipped.
 function changedFiles(): string[] {
-  const status = spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: root, encoding: 'utf8' })
-  return status.stdout
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => line.slice(3).split(' -> ').pop()!.replace(/^"|"$/g, ''))
-    .filter((file) => existsSync(join(root, file)))
+  const fields = spawnSync('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], { cwd: root, encoding: 'utf8' }).stdout.split('\0')
+  const files: string[] = []
+  for (let i = 0; i < fields.length; i++) {
+    if (fields[i].length < 4) continue
+    files.push(fields[i].slice(3))
+    if (fields[i][0] === 'R' || fields[i][0] === 'C') i++
+  }
+  return files.filter((file) => existsSync(join(root, file)))
+}
+
+// Files about to be saved that still hold the <<<<<<< ======= >>>>>>> markers of a merge someone didn't finish
+// combining (after `start.ts --update`, say).
+function conflictMarkers(): string[] {
+  const check = spawnSync('git', ['-c', 'core.quotepath=false', 'diff', '--cached', '--check'], { cwd: root, encoding: 'utf8' }).stdout
+  return [...new Set([...check.matchAll(/^(.+?):\d+: leftover conflict marker$/gm)].map((m) => m[1]))]
 }
 
 // Dev-mode markers in what Git holds, not the folder: `:` is what is staged for the commit, `HEAD` what gets pushed.
@@ -76,6 +86,11 @@ await run.prepare(profile, changedFiles())
 let committed: string[] = []
 if (spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).stdout.trim() !== '') {
   git('add', '-A')
+  const unmerged = conflictMarkers()
+  if (unmerged.length > 0) {
+    git('reset', '-q')
+    run.fail('conflicts', `These files still have <<<<<<< ======= >>>>>>> markers from combining two versions: ${unmerged.join(', ')}. Combine both versions in each and remove the markers, then save again. Nothing was saved.`, { files: unmerged })
+  }
   // The last word on dev mode is what Git is about to save, whatever happened in the folder since the build.
   const staged = devModeIn(':')
   if (staged.length > 0) {

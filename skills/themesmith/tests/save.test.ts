@@ -385,3 +385,19 @@ test('a formatter that fails for any other reason still stops the save', () => {
   expect(result.ok).toBe(false)
   expect(result.steps.at(-1)).toMatchObject({ step: 'format', ok: false })
 })
+
+test('refuses to save files that still have conflict markers, saving nothing', () => {
+  writeFileSync(join(repo, 'sections/hero.liquid'), '<<<<<<< HEAD\n<h1>Ours</h1>\n=======\n<h1>Theirs</h1>\n>>>>>>> origin/main\n')
+  const { result } = save('--message', 'Hero text', '--no-push')
+  expect(result.ok).toBe(false)
+  expect(result.steps.at(-1)).toMatchObject({ step: 'conflicts', ok: false })
+  expect(git(repo, 'log', '-1', '--format=%s')).toBe('init')
+  expect(git(repo, 'diff', '--cached', '--name-only')).toBe('')
+})
+
+test('formats and saves a file whose name has an accent', () => {
+  writeFileSync(join(repo, 'sections/café.liquid'), '<h1>Menu</h1>\n')
+  const { result } = save('--message', 'Café section', '--no-push')
+  expect(result.ok).toBe(true)
+  expect(readFileSync(join(repo, 'format.log'), 'utf8')).toBe('sections/café.liquid\n')
+})

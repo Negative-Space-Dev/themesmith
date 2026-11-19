@@ -25,7 +25,7 @@ type Skipped = { file: string; reason: string }
 const REVIEWABLE = /\.(liquid|html?|js|mjs|cjs|ts|tsx|css)$/i
 
 function git(...args: string[]): string {
-  return spawnSync('git', args, { cwd: root, encoding: 'utf8' }).stdout ?? ''
+  return spawnSync('git', ['-c', 'core.quotepath=false', ...args], { cwd: root, encoding: 'utf8' }).stdout ?? ''
 }
 
 function baseRef(): string {

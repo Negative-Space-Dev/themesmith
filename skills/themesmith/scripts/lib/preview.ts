@@ -89,7 +89,7 @@ export async function findThemes(root: string, profile: Profile, branch: string)
 // so the preview doesn't trust a connected theme it can't check.
 export async function changedThemeFiles(root: string, from: string | null): Promise<Map<string, string | null> | null> {
   if (!from) return null
-  const diff = await exec(['git', 'diff', '--name-only', '--no-renames', from, 'HEAD'], { cwd: root })
+  const diff = await exec(['git', '-c', 'core.quotepath=false', 'diff', '--name-only', '--no-renames', from, 'HEAD'], { cwd: root })
   if (!diff.ok) return null
   const ignores = readIgnores(root)
   const files = diff.stdout
