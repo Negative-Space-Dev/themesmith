@@ -1,6 +1,6 @@
 // Runs commands without blocking, so independent work (checks, installs, builds) can run at the same time.
 import { closeSync, mkdirSync, openSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 
 export type ExecResult = { ok: boolean; code: number | null; stdout: string; stderr: string; out: string }
 export type ExecOptions = { cwd?: string; env?: Record<string, string | undefined>; timeout?: number }
@@ -46,22 +46,19 @@ export function sh(command: string, options: ExecOptions = {}): Promise<ExecResu
 // person). Its output goes to `log`. Returns its process ID, which is also its process group on Mac and Linux.
 export function startDetached(cmd: string[], options: { cwd: string; log: string; env?: Record<string, string | undefined> }): number {
   mkdirSync(dirname(options.log), { recursive: true })
-  // On Windows a detached process never wrote to a log file handed to it, so a shell command line redirects its own
-  // output there instead: `(command) >> "log" 2>&1`, the parentheses covering every command in an `a && b` line.
-  const redirect = verbatim(cmd)
-  const fd = redirect ? null : openSync(options.log, 'a')
-  const line = redirect ? [...cmd.slice(0, -1), `"(${cmd.at(-1)!.slice(1, -1)}) >> "${options.log}" 2>&1"`] : cmd
+  const fd = openSync(options.log, 'a')
+  // cmd.exe started detached on Windows writes nothing to its log, so a detached Bun starts it instead (detach.ts).
+  const line = verbatim(cmd) ? [process.execPath, join(import.meta.dir, 'detach.ts'), ...cmd] : cmd
   const proc = Bun.spawn(line, {
     cwd: options.cwd,
     env: options.env ? { ...process.env, ...options.env } : undefined,
-    windowsVerbatimArguments: redirect,
     stdin: 'ignore',
-    stdout: fd ?? 'ignore',
-    stderr: fd ?? 'ignore',
+    stdout: fd,
+    stderr: fd,
     detached: true,
   })
   proc.unref()
-  if (fd !== null) closeSync(fd)
+  closeSync(fd)
   return proc.pid
 }
 
