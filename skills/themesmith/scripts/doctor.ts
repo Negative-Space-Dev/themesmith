@@ -204,6 +204,7 @@ function confirmText(s: SuggestedProfile): string {
           ? `which one: ${s.storeOptions.join(' or ')}?`
           : 'not found; ask for the `.myshopify.com` address'
     }`,
+    ...(s.build.length ? [`- **Build:** \`${s.build.map((c) => (c.cwd === '.' ? c.run : `${c.run} (in ${c.cwd})`)).join('`, `')}\` runs before every save, so the store gets the built files.`] : []),
     s.mode === 'github'
       ? `- **Finished work:** goes to GitHub for review. \`${s.protectedBranches.join('`, `')}\` is never changed directly.`
       : '- **Finished work:** goes to an unpublished copy of your theme, for you to publish.',

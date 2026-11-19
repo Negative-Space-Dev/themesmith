@@ -185,16 +185,33 @@ export async function suggestProfile(root: string): Promise<SuggestedProfile> {
 
   const dev: Command[] = [{ cwd: '.', run: 'bun {skill}/scripts/shopify.ts theme dev --store {store}' }]
   const build: Command[] = []
+  // Files a build writes into the theme: the `-o`/`--output` of its build and dev scripts (Tailwind CLI, esbuild,
+  // Sass and the like).
+  const outputs = new Set<string>()
   for (const dir of packageDirs(root)) {
     // A Shopify app in the same repository has its own `shopify app dev`; only theme asset builds belong here.
     if (existsSync(join(dir, 'shopify.app.toml'))) continue
-    const vite = readdirSync(dir).some((f) => /^vite\.config\./.test(f))
-    const scripts = (JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { scripts?: Record<string, string> }).scripts ?? {}
+    let scripts: Record<string, string>
+    try {
+      scripts = (JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { scripts?: Record<string, string> }).scripts ?? {}
+    } catch {
+      // A package.json no tool can read builds nothing.
+      continue
+    }
     const cwd = relative(root, dir) || '.'
-    // A root `dev` script usually wraps `shopify theme dev`, which the first command already runs.
-    if (!vite && !/\bvite\b/.test(`${scripts.dev ?? ''} ${scripts.build ?? ''}`)) continue
-    if (scripts.dev && !/shopify\s+theme\s+dev/.test(scripts.dev)) dev.push({ cwd, run: `${runner(dir)} dev` })
-    if (scripts.build) build.push({ cwd, run: `${runner(dir)} build` })
+    // A `build` that runs the Shopify CLI (`shopify theme package`, say) isn't an asset build.
+    if (scripts.build && !/\bshopify\b/.test(scripts.build)) build.push({ cwd, run: `${runner(dir)} build` })
+    // A `dev` script that starts the Shopify CLI, itself or through scripts it runs, would start a second preview
+    // beside the first command.
+    const runsOthers = /\b(?:npm-run-all|run-[ps]|concurrently|npm run|pnpm|yarn|bun run)\b/.test(scripts.dev ?? '')
+    const startsShopify = /\bshopify\b/.test(scripts.dev ?? '') || (runsOthers && Object.values(scripts).some((v) => /shopify\s+theme\s+dev/.test(v)))
+    if (scripts.dev && !startsShopify) dev.push({ cwd, run: `${runner(dir)} dev` })
+    for (const s of [scripts.build, scripts.dev]) {
+      for (const m of (s ?? '').matchAll(/(?:^|\s)(?:-o|--output|--outfile)[\s=]+['"]?([^\s'"]+)/g)) {
+        const out = relative(root, join(dir, m[1])).replace(/\\/g, '/')
+        if (/^(assets|snippets)\//.test(out)) outputs.add(out)
+      }
+    }
   }
 
   // Build tools such as vite-plugin-shopify write a snippet that loads the built files. In dev mode it points at
@@ -209,7 +226,7 @@ export async function suggestProfile(root: string): Promise<SuggestedProfile> {
     const committed = await git(root, 'show', `HEAD:snippets/${f}`)
     for (const m of committed.matchAll(/['"]([A-Za-z]+_)[^'"/]*\.(?:js|css)['"]/g)) assetPrefixes.add(m[1])
   }
-  const generated = [...[...assetPrefixes].map((p) => `assets/${p}*`), ...snippets.map((f) => `snippets/${f}`)]
+  const generated = [...[...assetPrefixes].map((p) => `assets/${p}*`), ...snippets.map((f) => `snippets/${f}`), ...outputs]
 
   return { store, storeSource, storeUnsure, storeOptions, mode, modeSource, protectedBranches, dev, build, devModeMarkers, generated }
 }

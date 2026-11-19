@@ -282,3 +282,33 @@ test('theme-check.ts fails only on errors the change added, listing the ones the
   expect(added.code).toBe(1)
   expect(added.stdout).toContain("error   sections/legacy.liquid:2  'snippets/new-missing.liquid' does not exist (MissingTemplate)")
 })
+
+test('suggests a Tailwind CLI build, marks what it writes as built, and leaves out scripts that run the Shopify CLI', async () => {
+  write(
+    'package.json',
+    JSON.stringify({
+      scripts: {
+        build: 'tailwindcss -i src/app.css -o ./assets/app.css --minify',
+        dev: 'tailwindcss -i src/app.css -o assets/app.css --watch',
+        start: 'shopify theme dev',
+        package: 'shopify theme package',
+      },
+    })
+  )
+  write('package-lock.json', '{}')
+  commit('init')
+  expect(await suggestProfile(repo)).toMatchObject({
+    dev: [
+      { cwd: '.', run: 'bun {skill}/scripts/shopify.ts theme dev --store {store}' },
+      { cwd: '.', run: 'npm run dev' },
+    ],
+    build: [{ cwd: '.', run: 'npm run build' }],
+    generated: ['assets/app.css'],
+  })
+})
+
+test('does not start a second preview from a dev script that runs `shopify theme dev` through other scripts', async () => {
+  write('package.json', JSON.stringify({ scripts: { dev: 'run-p dev:*', 'dev:theme': 'shopify theme dev', 'dev:css': 'tailwindcss -o assets/app.css --watch' } }))
+  commit('init')
+  expect((await suggestProfile(repo)).dev).toEqual([{ cwd: '.', run: 'bun {skill}/scripts/shopify.ts theme dev --store {store}' }])
+})
