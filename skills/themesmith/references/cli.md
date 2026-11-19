@@ -8,7 +8,7 @@ The theme isn't connected to GitHub. Work happens in this folder and goes to an 
 bun <skill>/scripts/theme.ts start
 ```
 
-It copies the live theme into this folder and starts the preview in the background. Give the person the `preview` link it prints; it is visible only on this computer. If the folder holds changes that were never pushed, it stops and lists them. Ask the person: push them first, keep them as the start of this work (`--keep-local`, only on a first start), or throw them away (`--replace-local`, say what will be lost and get a yes first).
+It copies the live theme into this folder. The person's preview comes with the first push. If the folder holds changes that were never pushed, it stops and lists them. Ask the person: push them first, keep them as the start of this work (`--keep-local`, only on a first start), or throw them away (`--replace-local`, say what will be lost and get a yes first).
 
 ## Push to the draft
 
@@ -18,7 +18,7 @@ bun <skill>/scripts/theme.ts push --name "<short description of the work>"
 
 After every push, follow `references/review.md`: tell the person what changed with the draft's preview link, and check the code in the background.
 
-`--name` is needed only on the first push, which creates the draft theme. Every push formats, builds, checks, and confirms nobody edited the draft on Shopify since the last push. The output has a `preview` link the person can share and an `editor` link for the theme editor.
+`--name` is needed only on the first push, which creates the draft theme, and again if someone deleted the draft in Shopify admin: the push then puts this folder's work in a new draft. Every push formats, builds, checks, and confirms nobody edited the draft on Shopify since the last push. The output has a `preview` link the person can share and an `editor` link for the theme editor.
 
 If the drift check fails, someone (often the person, in the theme editor) changed the draft. Run:
 

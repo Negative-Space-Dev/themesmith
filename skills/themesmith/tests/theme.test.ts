@@ -269,3 +269,19 @@ test('keeps pushing to the same draft from state written with Shopify CLI 4, whi
   expect(themes()).toHaveLength(2)
   expect(read(themeDir(LIVE + 1), 'sections/hero.liquid')).toBe('<h1>Bigger sale</h1>\n')
 })
+
+test('after someone deletes the draft in Shopify admin, push --name puts the work in a new draft', () => {
+  theme('start')
+  write(folder, 'sections/hero.liquid', '<h1>Sale</h1>\n')
+  theme('push', '--name', 'Fall sale')
+  writeFileSync(join(shop, 'themes.json'), JSON.stringify(themes().filter((t) => t.role === 'live')))
+
+  const stuck = theme('push')
+  expect(stuck.ok).toBe(false)
+  expect(stuck.steps.at(-1)!.detail).toContain('push with --name')
+
+  const r = theme('push', '--name', 'Fall sale again')
+  expect(r.ok).toBe(true)
+  const draft = themes().find((t) => t.name === 'Fall sale again')!
+  expect(read(themeDir(draft.id), 'sections/hero.liquid')).toBe('<h1>Sale</h1>\n')
+})

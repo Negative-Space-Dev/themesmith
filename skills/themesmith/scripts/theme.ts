@@ -155,13 +155,14 @@ async function push() {
   }
   const list = await themes()
   let draft = state.draft ? list.find((t) => t.id === state.draft!.id) : undefined
-  if (state.draft && !draft) {
-    run.fail('draft', `The draft theme "${state.draft.name}" no longer exists. Run \`pull-changes --from live\`, then push with --name to create a new draft.`)
+  const name = arg('--name')
+  // Someone deleted the draft in Shopify admin: this folder still holds the work, so a new draft takes it.
+  if (state.draft && !draft && !name) {
+    run.fail('draft', `The draft theme "${state.draft.name}" no longer exists. This folder still has the work: push with --name "<name>" to put it in a new draft.`)
   }
   if (draft?.role === 'live') {
     run.fail('draft', `"${draft.name}" is now the live theme, so it can't be the draft. Run \`start\` to begin new work.`)
   }
-  const name = arg('--name')
   if (!draft && !name) run.fail('arguments', 'This is the first push, so pass --name "<draft theme name>".')
 
   stopLocalPreview()
