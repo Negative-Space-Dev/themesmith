@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -23,7 +23,8 @@ const claude = (name: string) => join(home, '.claude/skills', name)
 const agents = (name: string) => join(home, '.agents/skills', name)
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'themesmith-install-'))
+  // The real path: on a Mac the temporary folder is behind a link (/var is /private/var).
+  dir = realpathSync(mkdtempSync(join(tmpdir(), 'themesmith-install-')))
   checkout = join(dir, 'themesmith')
   home = join(dir, 'home')
   mkdirSync(checkout)

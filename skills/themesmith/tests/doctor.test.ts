@@ -38,13 +38,28 @@ function doctor(args: string[] = [], env: Record<string, string> = {}) {
     cwd: theme,
     encoding: 'utf8',
     // The store the Shopify CLI last used is read from its config folder: never the real one in tests.
-    env: { ...process.env, PATH: `${join(dir, 'bin')}:${process.env.PATH}`, BUN_INSTALL_GLOBAL_DIR: join(dir, 'no-bun-global'), XDG_CONFIG_HOME: join(dir, 'config'), ...env },
+    env: {
+      ...process.env,
+      PATH: `${join(dir, 'bin')}:${process.env.PATH}`,
+      BUN_INSTALL_GLOBAL_DIR: join(dir, 'no-bun-global'),
+      XDG_CONFIG_HOME: join(dir, 'config'),
+      APPDATA: join(dir, 'config'),
+      ...(process.platform === 'darwin' ? { HOME: join(dir, 'home') } : {}),
+      ...env,
+    },
   })
   try {
     return JSON.parse(r.stdout)
   } catch {
     throw new Error(`doctor printed no JSON:\n${r.stdout}\n${r.stderr}`)
   }
+}
+
+// Where the Shopify CLI keeps one of its config files on this system, under the test's folders (see cliConfig in
+// lib/detect.ts): ~/Library/Preferences on a Mac, %APPDATA% on Windows, $XDG_CONFIG_HOME elsewhere.
+function cliConfigFile(name: string): string {
+  if (process.platform === 'darwin') return join(dir, 'home/Library/Preferences', name, 'config.json')
+  return join(dir, 'config', name, process.platform === 'win32' ? 'Config' : '', 'config.json')
 }
 
 const profile = (extra: object = {}) =>
@@ -140,13 +155,13 @@ test('finds the store from the repository before the store the Shopify CLI last 
   spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: theme })
   spawnSync('git', ['remote', 'add', 'origin', 'git@github.com:acme/acme-audio.git'], { cwd: theme })
   // The CLI last used another store, and has also worked with this one.
-  write(join(dir, 'config/shopify-cli-theme-conf-nodejs/config.json'), JSON.stringify({ themeStore: 'other-brand.myshopify.com' }))
-  write(join(dir, 'config/shopify-cli-theme-store-password-nodejs/config.json'), JSON.stringify({ 'other-brand': 'x', 'acme-audio': 'x' }))
+  write(cliConfigFile('shopify-cli-theme-conf-nodejs'), JSON.stringify({ themeStore: 'other-brand.myshopify.com' }))
+  write(cliConfigFile('shopify-cli-theme-store-password-nodejs'), JSON.stringify({ 'other-brand': 'x', 'acme-audio': 'x' }))
   expect(doctor().confirm).toStartWith('- **Store:** acme-audio.myshopify.com\n')
 
   // Two stores match the name and nothing settles it: the person picks.
   spawnSync('git', ['remote', 'set-url', 'origin', 'git@github.com:acme/acme.git'], { cwd: theme })
-  write(join(dir, 'config/shopify-cli-theme-store-password-nodejs/config.json'), JSON.stringify({ 'acme-audio': 'x', 'acme-wholesale': 'x' }))
+  write(cliConfigFile('shopify-cli-theme-store-password-nodejs'), JSON.stringify({ 'acme-audio': 'x', 'acme-wholesale': 'x' }))
   expect(doctor().confirm).toStartWith('- **Store:** which one: acme-audio.myshopify.com or acme-wholesale.myshopify.com?\n')
 
   // Nothing matches: the last-used store, marked as a guess.
@@ -199,7 +214,7 @@ test('a placeholder store in the README is not taken for the theme\'s store', ()
   installShopify('5.0.1')
   spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: theme })
   spawnSync('git', ['remote', 'add', 'origin', 'git@github.com:acme/acme-audio.git'], { cwd: theme })
-  write(join(dir, 'config/shopify-cli-theme-store-password-nodejs/config.json'), JSON.stringify({ 'acme-audio': 'x' }))
+  write(cliConfigFile('shopify-cli-theme-store-password-nodejs'), JSON.stringify({ 'acme-audio': 'x' }))
   write(join(theme, 'README.md'), 'Run `shopify theme dev --store your-store.myshopify.com`, e.g. example.myshopify.com.\n')
   expect(doctor().confirm).toStartWith('- **Store:** acme-audio.myshopify.com\n')
 })
