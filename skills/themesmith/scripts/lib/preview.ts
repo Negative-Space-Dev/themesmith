@@ -165,10 +165,8 @@ export async function waitForSync(root: string, profile: Profile, themes: Theme[
 // it links the themes page and names the clicks.
 export function connectTip(profile: Profile, branch: string): string {
   return (
-    'Tip: a GitHub-connected preview theme is better, because GitHub-connected themes sync changes in both directions. ' +
-    `To set it up, go to your themes (https://${profile.store}/admin/themes), choose Add theme, then Connect from GitHub, and pick this repository and the branch \`${branch}\`. ` +
-    'Once it is connected, themesmith finds it on the next save and gives you its link instead. ' +
-    "Until then, ask me for changes rather than editing this preview in Shopify's theme editor: the next save replaces it, editor changes included."
+    `Tip: connect branch \`${branch}\` from GitHub (https://${profile.store}/admin/themes > Add theme > Connect from GitHub) ` +
+    'so theme editor changes are kept. Until then, the next save overwrites them.'
   )
 }
 

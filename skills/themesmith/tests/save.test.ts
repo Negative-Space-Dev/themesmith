@@ -171,10 +171,9 @@ test('without a connected theme, uploads the built theme to a development theme 
   expect(previewFile('snippets/vite-tag.liquid')).toBe(BUILT_TAG)
   // A note under the link suggests connecting the branch, which syncs both ways.
   const tip = (result as { connectTip?: string }).connectTip!
-  expect(tip).toStartWith('Tip: a GitHub-connected preview theme is better, because GitHub-connected themes sync changes in both directions.')
+  expect(tip).toStartWith('Tip: connect branch `hero-text` from GitHub')
   expect(tip).toContain('https://example.myshopify.com/admin/themes')
-  expect(tip).toContain('the branch `hero-text`')
-
+  
   // The next save reuses the same development theme.
   writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>Newer</h1>\n')
   expect(save('--message', 'Update hero text again').result.ok).toBe(true)
