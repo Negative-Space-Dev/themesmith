@@ -2,7 +2,7 @@
 // A script records each step and stops at the first failure, printing JSON that names it. Commands of the same
 // kind (two builds, say) run at the same time.
 import { existsSync, readFileSync } from 'node:fs'
-import { join, relative, resolve } from 'node:path'
+import { join, relative, resolve, sep } from 'node:path'
 import { sh } from './exec.ts'
 import { globMatch, type Command, type Profile } from './profile.ts'
 
@@ -86,7 +86,12 @@ export class Run {
   async prepare(profile: Profile, changed: string[]) {
     const own = changed.filter((f) => !profile.generated.some((g) => globMatch(g, f)))
     const files = own.filter((f) => FORMATTABLE.test(f))
-    const fileArg = (command: Command, f: string) => shellQuote(relative(join(this.root, command.cwd), join(this.root, f)))
+    // Forward slashes on Windows too, where tools accept them, so paths read the same everywhere. Only there: on Mac
+    // and Linux a backslash can be part of a file's name.
+    const fileArg = (command: Command, f: string) => {
+      const path = relative(join(this.root, command.cwd), join(this.root, f))
+      return shellQuote(sep === '\\' ? path.replace(/\\/g, '/') : path)
+    }
     const filesFor = (command: Command) => files.map((f) => fileArg(command, f)).join(' ')
     if (files.length > 0) await this.format(profile, files, fileArg)
     await this.commands('build', profile.build, () => ({ store: profile.store }))

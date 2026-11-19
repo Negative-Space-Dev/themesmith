@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import { removeDir } from './helpers.ts'
 
 const SKILL_DIR = resolve(import.meta.dir, '..')
 let repo: string
@@ -45,7 +46,7 @@ beforeEach(() => {
   write('.agents/themesmith.json', JSON.stringify({ store: 'example.myshopify.com', mode: 'github', generated: ['snippets/vite-tag.liquid'] }))
 })
 
-afterEach(() => rmSync(repo, { recursive: true, force: true }))
+afterEach(() => removeDir(repo))
 
 test('groups a section with the changed snippets it renders, and leaves others as their own units', () => {
   write('sections/hero.liquid', "<div class=\"x\">\n{% render 'hero-image' %}\n{% render 'price' %}\n</div>\n")

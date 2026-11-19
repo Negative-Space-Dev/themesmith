@@ -24,3 +24,9 @@ export function onGitHub(origin: string): boolean {
   const r = spawnSync('ssh', ['-G', host], { encoding: 'utf8', timeout: 5_000 })
   return r.status === 0 && /^hostname\s+github\.com\s*$/im.test(r.stdout)
 }
+
+// The repository's name from its origin: git@github.com:acme/theme.git, https://github.com/acme/theme and a local
+// C:\\repos\\theme.git are all "theme".
+export function repoNameOf(origin: string): string | null {
+  return origin.trim().match(/([^/:\\]+?)(?:\.git)?[/\\]?$/)?.[1] ?? null
+}

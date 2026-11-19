@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import { stopDetached } from '../scripts/lib/exec.ts'
+import { installFakeShopify, pathWith, removeDir } from './helpers.ts'
 
 const DOCTOR = resolve(import.meta.dir, '../scripts/doctor.ts')
 let dir: string
@@ -19,8 +21,8 @@ function write(file: string, content: string) {
 
 // A Shopify CLI linked like a global install: reports `version`, lists the given themes, and passes Theme Check.
 function installShopify(version: string, themes: { id: string; name: string; role: string }[] = []) {
-  write(
-    join(dir, 'bin/cli/run.ts'),
+  installFakeShopify(
+    join(dir, 'bin'),
     `const a = process.argv.slice(2)
 if (a[0] === 'version') console.log(${JSON.stringify(`\n${version}`)})
 else if (a[1] === 'list') console.log(JSON.stringify({ themes: ${JSON.stringify(themes)} }))
@@ -28,9 +30,6 @@ else if (a[1] === 'check' && a.includes('--init')) require('fs').writeFileSync(a
 else if (a[1] === 'check') console.log(JSON.stringify({ valid: true, issues: [], errorCount: 0, warningCount: 0, infoCount: 0 }))
 `
   )
-  // Bun.which, like a shell, only finds executable files.
-  chmodSync(join(dir, 'bin/cli/run.ts'), 0o755)
-  symlinkSync(join(dir, 'bin/cli/run.ts'), join(dir, 'bin/shopify'))
 }
 
 function doctor(args: string[] = [], env: Record<string, string> = {}) {
@@ -40,7 +39,7 @@ function doctor(args: string[] = [], env: Record<string, string> = {}) {
     // The store the Shopify CLI last used is read from its config folder: never the real one in tests.
     env: {
       ...process.env,
-      PATH: `${join(dir, 'bin')}:${process.env.PATH}`,
+      PATH: pathWith(join(dir, 'bin')),
       BUN_INSTALL_GLOBAL_DIR: join(dir, 'no-bun-global'),
       XDG_CONFIG_HOME: join(dir, 'config'),
       APPDATA: join(dir, 'config'),
@@ -80,7 +79,18 @@ beforeEach(() => {
   write(join(theme, 'sections/hero.liquid'), '<h1>Hi</h1>\n')
 })
 
-afterEach(() => rmSync(dir, { recursive: true, force: true }))
+afterEach(() => {
+  // --fix starts the full Theme Check and sign-ins in the background, in the theme's folder; stop them first, so the
+  // folder can go (Windows won't remove a folder a process is using).
+  const jobs = join(theme, '.themesmith/jobs')
+  for (const f of existsSync(jobs) ? readdirSync(jobs).filter((f) => f.endsWith('.json')) : []) {
+    try {
+      const { pid } = JSON.parse(readFileSync(join(jobs, f), 'utf8')) as { pid?: number }
+      if (pid) stopDetached(pid)
+    } catch {}
+  }
+  removeDir(dir)
+})
 
 test('flags a Shopify CLI older than 5.0 in the chart', () => {
   installShopify('4.9.4')

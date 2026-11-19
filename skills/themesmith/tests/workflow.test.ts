@@ -6,6 +6,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { suggestProfile } from '../scripts/lib/detect.ts'
+import { bunCommand, installCommand, installFakeShopify, pathWith, removeDir } from './helpers.ts'
 
 const SCRIPTS = resolve(import.meta.dir, '../scripts')
 let dir: string
@@ -27,17 +28,16 @@ function commit(message: string) {
 
 // A fake Shopify CLI, linked like a global install, from the given source.
 function installShopify(source: string) {
-  mkdirSync(join(dir, 'bin/cli'), { recursive: true })
-  writeFileSync(join(dir, 'bin/cli/run.ts'), source)
-  chmodSync(join(dir, 'bin/cli/run.ts'), 0o755)
-  symlinkSync(join(dir, 'bin/cli/run.ts'), join(dir, 'bin/shopify'))
+  installFakeShopify(join(dir, 'bin'), source)
 }
 
 function script(name: string, ...args: string[]) {
   const r = spawnSync('bun', [join(SCRIPTS, name), ...args], {
     cwd: repo,
     encoding: 'utf8',
-    env: { ...process.env, PATH: `${join(dir, 'bin')}:${process.env.PATH}`, BUN_INSTALL_GLOBAL_DIR: join(dir, 'no-bun-global') },
+    // dev.ts waits up to 3 minutes for a preview; give up sooner and show why (see the dev.ts test).
+    timeout: 40_000,
+    env: { ...process.env, PATH: pathWith(join(dir, 'bin')), BUN_INSTALL_GLOBAL_DIR: join(dir, 'no-bun-global') },
   })
   return { code: r.status, stdout: r.stdout, stderr: r.stderr, json: () => JSON.parse(r.stdout) }
 }
@@ -55,7 +55,7 @@ beforeEach(() => {
 
 afterEach(() => {
   spawnSync('bun', [join(SCRIPTS, 'dev.ts'), 'stop'], { cwd: repo })
-  rmSync(dir, { recursive: true, force: true })
+  removeDir(dir)
 })
 
 test('suggests a profile from the repository: protected branches, asset builds, and built files', async () => {
@@ -174,14 +174,28 @@ test('theme-check.ts checks only the changed theme files, skipping built ones', 
 })
 
 test('dev.ts starts the preview in the background and finds pages to preview new templates on', async () => {
-  installShopify(`const port = 20000 + Math.floor(Math.random() * 20000)
+  installShopify(`require('fs').writeFileSync(${JSON.stringify(join(dir, 'cli-started'))}, process.argv.slice(2).join(' '))
+const port = 20000 + Math.floor(Math.random() * 20000)
 Bun.serve({ port, fetch: () => new Response('<a href="/pages/about">About</a><a href="/products/widget">Widget</a>', { headers: { 'content-type': 'text/html' } }) })
+// Written straight to the file first: if only this line reaches the log, console.log's output is being held back.
+require('fs').writeSync(1, 'fake CLI started\\n')
 console.log('Preview your theme: http://127.0.0.1:' + port)
 console.log('Share your theme preview (https://example.myshopify.com/?preview_theme_id=123)')
 `)
-  profile({ dev: [{ cwd: '.', run: 'bun {skill}/scripts/shopify.ts theme dev --store {store}' }] })
+  // A line from the step before the Shopify CLI wrapper, so a failure shows which step loses the output.
+  const marker = bunCommand(dir, 'marker', "require('fs').writeSync(1, 'shell step ok\\n')\n")
+  profile({ dev: [{ cwd: '.', run: `${marker} && bun {skill}/scripts/shopify.ts theme dev --store {store}` }] })
 
-  const started = script('dev.ts').json()
+  const run = script('dev.ts')
+  const log = (i: number) => (existsSync(join(repo, `.themesmith/dev/${i}.log`)) ? readFileSync(join(repo, `.themesmith/dev/${i}.log`), 'utf8') : '(no log)')
+  let started
+  try {
+    started = run.json()
+  } catch {
+    const cli = existsSync(join(dir, 'cli-started')) ? `ran with: ${readFileSync(join(dir, 'cli-started'), 'utf8')}` : 'never ran'
+    const state = existsSync(join(repo, '.themesmith/dev.json')) ? readFileSync(join(repo, '.themesmith/dev.json'), 'utf8') : '(no dev.json)'
+    throw new Error(`dev.ts printed no JSON (exit ${run.code}):\n${run.stdout}\n${run.stderr}\npreview log:\n${log(0)}\nfake CLI ${cli}\n${state}`)
+  }
   expect(started).toMatchObject({ ok: true, share: 'https://example.myshopify.com/?preview_theme_id=123', samples: { page: '/pages/about', product: '/products/widget', collection: null } })
   expect((await fetch(started.preview)).ok).toBe(true)
   expect(script('dev.ts', 'status').json().running).toBe(true)
@@ -331,13 +345,11 @@ console.log(JSON.stringify({ issues: [{ filePath: path + '/sections/hero.liquid'
 
 test('a GitHub remote behind an SSH host alias counts as GitHub', async () => {
   // ssh -G, as it answers with `Host github-work` / `HostName github.com` in ~/.ssh/config.
-  mkdirSync(join(dir, 'bin'), { recursive: true })
-  writeFileSync(join(dir, 'bin/ssh'), `#!/bin/sh\n[ "$2" = github-work ] && echo "hostname github.com" || echo "hostname $2"\n`)
-  chmodSync(join(dir, 'bin/ssh'), 0o755)
+  installCommand(join(dir, 'bin'), 'ssh', "const host = process.argv[3]\nconsole.log(`hostname ${host === 'github-work' ? 'github.com' : host}`)\n")
   git(repo, 'remote', 'add', 'origin', 'git@github-work:acme/theme.git')
   commit('init')
   const path = process.env.PATH
-  process.env.PATH = `${join(dir, 'bin')}:${path}`
+  process.env.PATH = pathWith(join(dir, 'bin'))
   try {
     expect((await suggestProfile(repo)).mode).toBe('github')
     git(repo, 'remote', 'set-url', 'origin', 'git@gitlab.com:acme/theme.git')

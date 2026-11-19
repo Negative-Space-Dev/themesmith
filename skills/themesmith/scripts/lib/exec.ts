@@ -1,16 +1,21 @@
 // Runs commands without blocking, so independent work (checks, installs, builds) can run at the same time.
 import { closeSync, mkdirSync, openSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 
 export type ExecResult = { ok: boolean; code: number | null; stdout: string; stderr: string; out: string }
 export type ExecOptions = { cwd?: string; env?: Record<string, string | undefined>; timeout?: number }
 
 const windows = process.platform === 'win32'
 
-// A command line run by the system shell, as profile commands are written.
+// A command line run by the system shell, as profile commands are written. On Windows the whole line goes to
+// cmd.exe in one pair of quotes, passed as is (see `verbatim`): Bun would otherwise escape the quotes inside it as
+// \", which cmd.exe doesn't understand, breaking any command with a quoted argument. Node's `shell: true` does
+// the same.
 export function shellArgs(command: string): string[] {
-  return windows ? ['cmd.exe', '/d', '/s', '/c', command] : ['sh', '-c', command]
+  return windows ? ['cmd.exe', '/d', '/s', '/c', `"${command}"`] : ['sh', '-c', command]
 }
+
+const verbatim = (cmd: string[]) => windows && cmd[0] === 'cmd.exe'
 
 export async function exec(cmd: string[], options: ExecOptions = {}): Promise<ExecResult> {
   let proc
@@ -19,6 +24,7 @@ export async function exec(cmd: string[], options: ExecOptions = {}): Promise<Ex
       cwd: options.cwd,
       env: options.env ? { ...process.env, ...options.env } : undefined,
       timeout: options.timeout,
+      windowsVerbatimArguments: verbatim(cmd),
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
@@ -41,7 +47,9 @@ export function sh(command: string, options: ExecOptions = {}): Promise<ExecResu
 export function startDetached(cmd: string[], options: { cwd: string; log: string; env?: Record<string, string | undefined> }): number {
   mkdirSync(dirname(options.log), { recursive: true })
   const fd = openSync(options.log, 'a')
-  const proc = Bun.spawn(cmd, {
+  // cmd.exe started detached on Windows writes nothing to its log, so a detached Bun starts it instead (detach.ts).
+  const line = verbatim(cmd) ? [process.execPath, join(import.meta.dir, 'detach.ts'), ...cmd] : cmd
+  const proc = Bun.spawn(line, {
     cwd: options.cwd,
     env: options.env ? { ...process.env, ...options.env } : undefined,
     stdin: 'ignore',

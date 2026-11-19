@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join } from 'node:path'
 import { suggestProfile, type SuggestedProfile } from './lib/detect.ts'
 import { exec, isRunning, startDetached } from './lib/exec.ts'
-import { onGitHub } from './lib/git.ts'
+import { onGitHub, repoNameOf } from './lib/git.ts'
 import { findRoot, globMatch, loadProfile, parseProfile, PROFILE_PATH, ProfileError, type Profile } from './lib/profile.ts'
 import { arg } from './lib/run.ts'
 import { describeError, runShopifyJsonAsync } from './lib/shopify.ts'
@@ -159,7 +159,7 @@ function themeItems(profile: Profile | null, t: Tooling | Error): Item[] {
 // The branch the live theme follows, when Shopify's GitHub integration connected it: the live theme is then named
 // "<repo>/<branch>", cut to 47 characters and "..." past 50 (a pattern then). Pushing to that branch publishes.
 function liveBranch(themes: { name: string; role: string }[], origin: string): string | null {
-  const repo = origin.match(/([^/:]+?)(?:\.git)?\/?$/)?.[1]?.toLowerCase()
+  const repo = repoNameOf(origin)?.toLowerCase()
   const live = themes.find((t) => t.role === 'live')
   if (!repo || !live || !live.name.toLowerCase().startsWith(`${repo}/`)) return null
   const branch = live.name.slice(repo.length + 1)
