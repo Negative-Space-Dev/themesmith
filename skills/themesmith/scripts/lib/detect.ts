@@ -3,6 +3,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, relative } from 'node:path'
+import { defaultBranch as namedDefaultBranch } from './branch.ts'
 import { exec } from './exec.ts'
 import { globMatch, type Command, type DevModeMarker, type Mode } from './profile.ts'
 
@@ -141,20 +142,14 @@ function protectedPatterns(defaultBranch: string, bases: string[]): string[] {
 }
 
 export async function suggestProfile(root: string): Promise<SuggestedProfile> {
-  const [origin, log, head] = await Promise.all([
-    git(root, 'remote', 'get-url', 'origin'),
-    git(root, 'log', '--format=%s', '-500'),
-    git(root, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'),
-  ])
+  const [origin, log] = await Promise.all([git(root, 'remote', 'get-url', 'origin'), git(root, 'log', '--format=%s', '-500')])
   // Shopify's GitHub integration commits as "Update from Shopify for theme <repo>/<branch>", most often on the
   // branch the live theme follows.
   const syncs = new Map<string, number>()
   for (const m of log.matchAll(/Update from Shopify for theme [^/\s]+\/(\S+)/g)) syncs.set(m[1], (syncs.get(m[1]) ?? 0) + 1)
   const connected = [...syncs.keys()].sort((a, b) => syncs.get(b)! - syncs.get(a)!)
   // The default branch: what origin/HEAD names, else main or master, else the branch Shopify syncs most.
-  const fromHead = head.replace(/^origin\//, '')
-  const named = fromHead ? null : await git(root, 'for-each-ref', '--format=%(refname:lstrip=-1)', 'refs/heads/main', 'refs/heads/master', 'refs/remotes/origin/main', 'refs/remotes/origin/master')
-  const defaultBranch = fromHead || named?.split('\n').find(Boolean) || connected[0] || 'main'
+  const defaultBranch = namedDefaultBranch(root) ?? connected[0] ?? 'main'
   const github = origin.includes('github.com')
   const mode: Mode = github ? 'github' : 'cli'
   const modeSource = github

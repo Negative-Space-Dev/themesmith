@@ -14,6 +14,7 @@
 // where `git stash pop` brings them back.
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { defaultBranch } from './lib/branch.ts'
 import { exec } from './lib/exec.ts'
 import { findRoot, isProtectedBranch, loadProfile, parseProfile, PROFILE_PATH, ProfileError, type Profile } from './lib/profile.ts'
 import { Run } from './lib/run.ts'
@@ -42,8 +43,7 @@ async function locate(): Promise<{ root: string; profile: Profile }> {
     const top = await exec(['git', 'rev-parse', '--show-toplevel'])
     if (!top.ok) throw error
     const root = top.stdout.trim()
-    const head = await exec(['git', 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], { cwd: root })
-    const base = (head.ok && head.stdout.trim().replace(/^origin\//, '')) || 'main'
+    const base = defaultBranch(root) ?? 'main'
     await exec(['git', 'fetch', 'origin', base], { cwd: root, timeout: 120_000 })
     const shown = await exec(['git', 'show', `origin/${base}:${PROFILE_PATH}`], { cwd: root })
     if (!shown.ok) throw error
@@ -54,8 +54,8 @@ async function locate(): Promise<{ root: string; profile: Profile }> {
 if (profile.mode !== 'github') run.fail('mode', 'This theme uses CLI mode. Start with `theme.ts start` instead.')
 if (!name && !keepGoing) run.fail('arguments', 'Pass a short name for the work, like fall-sale-banner, or --continue.')
 
-const [current, head] = await Promise.all([git('branch', '--show-current'), git('symbolic-ref', '--short', 'refs/remotes/origin/HEAD')])
-const base = (head.ok && head.out.replace(/^origin\//, '')) || 'main'
+const current = await git('branch', '--show-current')
+const base = defaultBranch(root) ?? 'main'
 // The fetch runs while the current branch is inspected.
 const fetched = keepGoing ? null : git('fetch', 'origin', base)
 

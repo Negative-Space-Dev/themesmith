@@ -10,6 +10,7 @@ import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
+import { defaultBranch } from './lib/branch.ts'
 import { builderOf } from './lib/builders.ts'
 import { findRoot, globMatch, loadProfile } from './lib/profile.ts'
 import { differing, readIgnores, snapshot, type Snapshot } from './lib/snapshot.ts'
@@ -29,8 +30,9 @@ function git(...args: string[]): string {
 function baseRef(): string {
   const flag = process.argv.indexOf('--base')
   if (flag !== -1 && process.argv[flag + 1]) return process.argv[flag + 1]
-  const head = git('symbolic-ref', '--short', 'refs/remotes/origin/HEAD').trim()
-  return head || 'origin/main'
+  const branch = defaultBranch(root) ?? 'main'
+  // A repository not pushed to GitHub yet has only the local branch.
+  return git('rev-parse', '--verify', '--quiet', `origin/${branch}`).trim() ? `origin/${branch}` : branch
 }
 
 function changedSinceStart(): string[] {
@@ -86,7 +88,12 @@ const root = findRoot()
 const profile = loadProfile(root)
 const cli = profile.mode === 'cli'
 const base = cli ? 'theme.ts start' : baseRef()
-const mergeBase = cli ? '' : git('merge-base', 'HEAD', base).trim() || 'HEAD'
+const mergeBase = cli ? '' : git('merge-base', 'HEAD', base).trim()
+// Without a merge base every change would look already saved, and the review would silently cover nothing.
+if (!cli && !mergeBase) {
+  console.log(JSON.stringify({ ok: false, error: `Can't tell where this work started: "${base}" has no history in common with this branch. Pass --base <branch> with the branch this work started from.` }))
+  process.exit(1)
+}
 const lines = (file: string) => (cli ? wholeFile(file) : changedLines(mergeBase, file))
 const skipped: Skipped[] = []
 const reviewable: string[] = []

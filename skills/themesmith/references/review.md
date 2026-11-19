@@ -22,7 +22,7 @@ The link is the `preview` the save (GitHub mode) or push (CLI mode) printed: bui
 bun <skill>/scripts/review-units.ts
 ```
 
-It lists the `units` changed since the last review round: each section with the changed snippets and blocks it renders, each page, layout, leftover snippet or block, the theme assets, and each `apps/` component. Every unit lists its files and `changedLines`, the line ranges this piece of work changed. In CLI mode there is no history to narrow it, so `changedLines` covers each whole file. If `units` is empty, skip to step 4 and say nothing about it.
+It lists the `units` changed since the last review round: each section with the changed snippets and blocks it renders, each page, layout, leftover snippet or block, the theme assets, and each `apps/` component. Every unit lists its files and `changedLines`, the line ranges this piece of work changed. In CLI mode there is no history to narrow it, so `changedLines` covers each whole file. If `units` is empty, skip to step 4 and say nothing about it. If it prints `"ok": false`, it couldn't tell which branch this work started from: run it again with `--base <that branch>`.
 
 If you can start a subagent that works while you keep talking with the person, start one now. Give it this brief, with the units filled in:
 

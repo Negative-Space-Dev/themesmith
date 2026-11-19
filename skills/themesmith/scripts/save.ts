@@ -11,6 +11,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { defaultBranch } from './lib/branch.ts'
 import { stopDev } from './lib/dev.ts'
 import { exec } from './lib/exec.ts'
 import { changedThemeFiles, findThemes, updatePreview, type Failure } from './lib/preview.ts'
@@ -122,8 +123,7 @@ const pushing = devModeIn('HEAD')
 if (pushing.length > 0) run.fail('dev mode check', `What would be pushed has dev-mode files: ${pushing.join('; ')}. Nothing was pushed.`)
 
 // The theme files this push carries: since the branch's last push, or for a new branch, since it left the base.
-const head = git('symbolic-ref', '--short', 'refs/remotes/origin/HEAD')
-const mergeBase = git('merge-base', 'HEAD', head.ok ? head.out : 'origin/main')
+const mergeBase = git('merge-base', 'HEAD', `origin/${defaultBranch(root) ?? 'main'}`)
 const files = await changedThemeFiles(root, remote.ok ? `origin/${branch}` : mergeBase.ok ? mergeBase.out : null)
 
 const dropped = forceWithLease && lease ? githubOnly() : []

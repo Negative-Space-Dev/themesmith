@@ -218,6 +218,11 @@ function hash(path: string): string | null {
   return h.digest('hex')
 }
 
+async function setOriginHead() {
+  const head = await exec(['git', 'symbolic-ref', '-q', 'refs/remotes/origin/HEAD'], { cwd: root })
+  if (!head.ok) await exec(['git', 'remote', 'set-head', 'origin', '--auto'], { cwd: root, timeout: 60_000 })
+}
+
 async function fix() {
   const skip = new Set((arg('--skip') ?? '').split(',').filter(Boolean))
   const before = await inspect()
@@ -253,6 +258,8 @@ async function fix() {
   const installs = installTools(toInstall)
   const themeSetup = (async () => {
     const gitConfig = [
+      // Scripts find the default branch through origin/HEAD, which a repository pushed from this folder lacks.
+      ...(profile!.mode === 'github' ? [setOriginHead()] : []),
       ...(arg('--git-name') ? [exec(['git', 'config', '--global', 'user.name', arg('--git-name')!])] : []),
       ...(arg('--git-email') ? [exec(['git', 'config', '--global', 'user.email', arg('--git-email')!])] : []),
     ]
