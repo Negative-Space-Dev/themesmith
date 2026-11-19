@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import { installCommand } from './helpers.ts'
 
 const SETUP = resolve(import.meta.dir, '../scripts/setup-tools.ts')
 let repo: string
@@ -32,15 +33,14 @@ beforeEach(() => {
   write('node_modules/prettier/package.json', '{}')
   write('node_modules/@shopify/prettier-plugin-liquid/package.json', '{}')
   // Prettier's --file-info, as the real one answers it: Liquid only with the plugin in the config.
-  write(
-    'node_modules/.bin/prettier',
-    `#!/usr/bin/env bun
-const a = process.argv.slice(2)
+  installCommand(
+    join(repo, 'node_modules/.bin'),
+    'prettier',
+    `const a = process.argv.slice(2)
 const config = a.includes('--config') ? require('fs').readFileSync(a[a.indexOf('--config') + 1], 'utf8') : ''
 console.log(JSON.stringify({ ignored: false, inferredParser: config.includes('prettier-plugin-liquid') ? 'liquid-html' : null }))
 `
   )
-  chmodSync(join(repo, 'node_modules/.bin/prettier'), 0o755)
   write('.prettierrc.json', JSON.stringify({ plugins: ['@shopify/prettier-plugin-liquid'] }))
   write('.theme-check.yml', 'extends: theme-check:recommended\n\nignore:\n  - node_modules/**\n\nRemoteAsset:\n  enabled: false\n')
   write('sections/hero.liquid')

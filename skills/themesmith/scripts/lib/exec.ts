@@ -7,10 +7,15 @@ export type ExecOptions = { cwd?: string; env?: Record<string, string | undefine
 
 const windows = process.platform === 'win32'
 
-// A command line run by the system shell, as profile commands are written.
+// A command line run by the system shell, as profile commands are written. On Windows the whole line goes to
+// cmd.exe in one pair of quotes, passed as is (see `verbatim`): Bun would otherwise escape the quotes inside it as
+// \", which cmd.exe doesn't understand, breaking any command with a quoted argument. Node's `shell: true` does
+// the same.
 export function shellArgs(command: string): string[] {
-  return windows ? ['cmd.exe', '/d', '/s', '/c', command] : ['sh', '-c', command]
+  return windows ? ['cmd.exe', '/d', '/s', '/c', `"${command}"`] : ['sh', '-c', command]
 }
+
+const verbatim = (cmd: string[]) => windows && cmd[0] === 'cmd.exe'
 
 export async function exec(cmd: string[], options: ExecOptions = {}): Promise<ExecResult> {
   let proc
@@ -19,6 +24,7 @@ export async function exec(cmd: string[], options: ExecOptions = {}): Promise<Ex
       cwd: options.cwd,
       env: options.env ? { ...process.env, ...options.env } : undefined,
       timeout: options.timeout,
+      windowsVerbatimArguments: verbatim(cmd),
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
@@ -44,6 +50,7 @@ export function startDetached(cmd: string[], options: { cwd: string; log: string
   const proc = Bun.spawn(cmd, {
     cwd: options.cwd,
     env: options.env ? { ...process.env, ...options.env } : undefined,
+    windowsVerbatimArguments: verbatim(cmd),
     stdin: 'ignore',
     stdout: fd,
     stderr: fd,

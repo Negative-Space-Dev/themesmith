@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { installFakeShopify, pathWith } from './helpers.ts'
 
 const SKILL_DIR = resolve(import.meta.dir, '..')
 const DEV_TAG = '<script src="http://127.0.0.1:5173/main.ts"></script>\n'
@@ -32,7 +33,7 @@ function setProfile(build: string) {
   )
 }
 
-const env = () => ({ ...process.env, PATH: `${join(dir, 'bin')}:${process.env.PATH}`, FAKE_SHOPIFY: shop, BUN_INSTALL_GLOBAL_DIR: join(dir, 'no-bun-global') })
+const env = () => ({ ...process.env, PATH: pathWith(join(dir, 'bin')), FAKE_SHOPIFY: shop, BUN_INSTALL_GLOBAL_DIR: join(dir, 'no-bun-global') })
 const themes = () => JSON.parse(readFileSync(join(shop, 'themes.json'), 'utf8')) as { id: number; name: string; role: string }[]
 const previewFile = (file: string) => readFileSync(join(shop, 'themes', '101', file), 'utf8')
 
@@ -46,10 +47,7 @@ const fixBuild = `bun -e "require('fs').writeFileSync('snippets/vite-tag.liquid'
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'themesmith-save-'))
   shop = join(dir, 'shop')
-  mkdirSync(join(dir, 'bin/cli'), { recursive: true })
-  cpSync(join(SKILL_DIR, 'tests/fake-shopify.ts'), join(dir, 'bin/cli/run.ts'))
-  chmodSync(join(dir, 'bin/cli/run.ts'), 0o755)
-  symlinkSync(join(dir, 'bin/cli/run.ts'), join(dir, 'bin/shopify'))
+  installFakeShopify(join(dir, 'bin'), readFileSync(join(SKILL_DIR, 'tests/fake-shopify.ts'), 'utf8'))
   mkdirSync(join(shop, 'themes/100'), { recursive: true })
   writeFileSync(join(shop, 'themes.json'), JSON.stringify([{ id: 100, name: 'Live', role: 'live' }]))
   writeFileSync(join(shop, 'calls.log'), '')
@@ -187,7 +185,9 @@ test('without a connected theme, uploads the built theme to a development theme 
 test('uses the theme Shopify connected to the branch once the push reaches it', () => {
   // Like Shopify's GitHub integration: every push to the branch is copied into the connected theme.
   const connected = join(shop, 'themes/200')
-  writeFileSync(join(remote, 'hooks/post-receive'), `#!/bin/sh\nwhile read old new ref; do mkdir -p "${connected}" && git archive "$new" | tar -x -C "${connected}"; done\n`)
+  // Git runs hooks with its own sh, also on Windows, where that sh wants forward slashes.
+  const to = connected.replace(/\\/g, '/')
+  writeFileSync(join(remote, 'hooks/post-receive'), `#!/bin/sh\nwhile read old new ref; do mkdir -p "${to}" && git archive "$new" | tar -x -C "${to}"; done\n`)
   chmodSync(join(remote, 'hooks/post-receive'), 0o755)
   // An earlier save, before the branch was connected, made a development theme for it.
   writeFileSync(

@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import { installFakeShopify, pathWith } from './helpers.ts'
 
 const DOCTOR = resolve(import.meta.dir, '../scripts/doctor.ts')
 let dir: string
@@ -19,8 +20,8 @@ function write(file: string, content: string) {
 
 // A Shopify CLI linked like a global install: reports `version`, lists the given themes, and passes Theme Check.
 function installShopify(version: string, themes: { id: string; name: string; role: string }[] = []) {
-  write(
-    join(dir, 'bin/cli/run.ts'),
+  installFakeShopify(
+    join(dir, 'bin'),
     `const a = process.argv.slice(2)
 if (a[0] === 'version') console.log(${JSON.stringify(`\n${version}`)})
 else if (a[1] === 'list') console.log(JSON.stringify({ themes: ${JSON.stringify(themes)} }))
@@ -28,9 +29,6 @@ else if (a[1] === 'check' && a.includes('--init')) require('fs').writeFileSync(a
 else if (a[1] === 'check') console.log(JSON.stringify({ valid: true, issues: [], errorCount: 0, warningCount: 0, infoCount: 0 }))
 `
   )
-  // Bun.which, like a shell, only finds executable files.
-  chmodSync(join(dir, 'bin/cli/run.ts'), 0o755)
-  symlinkSync(join(dir, 'bin/cli/run.ts'), join(dir, 'bin/shopify'))
 }
 
 function doctor(args: string[] = [], env: Record<string, string> = {}) {
@@ -40,7 +38,7 @@ function doctor(args: string[] = [], env: Record<string, string> = {}) {
     // The store the Shopify CLI last used is read from its config folder: never the real one in tests.
     env: {
       ...process.env,
-      PATH: `${join(dir, 'bin')}:${process.env.PATH}`,
+      PATH: pathWith(join(dir, 'bin')),
       BUN_INSTALL_GLOBAL_DIR: join(dir, 'no-bun-global'),
       XDG_CONFIG_HOME: join(dir, 'config'),
       APPDATA: join(dir, 'config'),

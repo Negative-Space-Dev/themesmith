@@ -23,8 +23,9 @@ const claude = (name: string) => join(home, '.claude/skills', name)
 const agents = (name: string) => join(home, '.agents/skills', name)
 
 beforeEach(() => {
-  // The real path: on a Mac the temporary folder is behind a link (/var is /private/var).
-  dir = realpathSync(mkdtempSync(join(tmpdir(), 'themesmith-install-')))
+  // The real path: on a Mac the temporary folder is behind a link (/var is /private/var), and on Windows it can
+  // be a short name (RUNNER~1).
+  dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'themesmith-install-')))
   checkout = join(dir, 'themesmith')
   home = join(dir, 'home')
   mkdirSync(checkout)

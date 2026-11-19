@@ -6,6 +6,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { suggestProfile } from '../scripts/lib/detect.ts'
+import { installCommand, installFakeShopify, pathWith } from './helpers.ts'
 
 const SCRIPTS = resolve(import.meta.dir, '../scripts')
 let dir: string
@@ -27,17 +28,14 @@ function commit(message: string) {
 
 // A fake Shopify CLI, linked like a global install, from the given source.
 function installShopify(source: string) {
-  mkdirSync(join(dir, 'bin/cli'), { recursive: true })
-  writeFileSync(join(dir, 'bin/cli/run.ts'), source)
-  chmodSync(join(dir, 'bin/cli/run.ts'), 0o755)
-  symlinkSync(join(dir, 'bin/cli/run.ts'), join(dir, 'bin/shopify'))
+  installFakeShopify(join(dir, 'bin'), source)
 }
 
 function script(name: string, ...args: string[]) {
   const r = spawnSync('bun', [join(SCRIPTS, name), ...args], {
     cwd: repo,
     encoding: 'utf8',
-    env: { ...process.env, PATH: `${join(dir, 'bin')}:${process.env.PATH}`, BUN_INSTALL_GLOBAL_DIR: join(dir, 'no-bun-global') },
+    env: { ...process.env, PATH: pathWith(join(dir, 'bin')), BUN_INSTALL_GLOBAL_DIR: join(dir, 'no-bun-global') },
   })
   return { code: r.status, stdout: r.stdout, stderr: r.stderr, json: () => JSON.parse(r.stdout) }
 }
@@ -331,13 +329,11 @@ console.log(JSON.stringify({ issues: [{ filePath: path + '/sections/hero.liquid'
 
 test('a GitHub remote behind an SSH host alias counts as GitHub', async () => {
   // ssh -G, as it answers with `Host github-work` / `HostName github.com` in ~/.ssh/config.
-  mkdirSync(join(dir, 'bin'), { recursive: true })
-  writeFileSync(join(dir, 'bin/ssh'), `#!/bin/sh\n[ "$2" = github-work ] && echo "hostname github.com" || echo "hostname $2"\n`)
-  chmodSync(join(dir, 'bin/ssh'), 0o755)
+  installCommand(join(dir, 'bin'), 'ssh', "const host = process.argv[3]\nconsole.log(`hostname ${host === 'github-work' ? 'github.com' : host}`)\n")
   git(repo, 'remote', 'add', 'origin', 'git@github-work:acme/theme.git')
   commit('init')
   const path = process.env.PATH
-  process.env.PATH = `${join(dir, 'bin')}:${path}`
+  process.env.PATH = pathWith(join(dir, 'bin'))
   try {
     expect((await suggestProfile(repo)).mode).toBe('github')
     git(repo, 'remote', 'set-url', 'origin', 'git@gitlab.com:acme/theme.git')

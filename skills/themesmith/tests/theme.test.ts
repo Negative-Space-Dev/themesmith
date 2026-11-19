@@ -2,7 +2,8 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { delimiter, dirname, join, resolve } from 'node:path'
+import { installFakeShopify, pathWith, windows } from './helpers.ts'
 
 const SKILL_DIR = resolve(import.meta.dir, '..')
 const LIVE = 100
@@ -27,7 +28,7 @@ function theme(...args: string[]): Result {
   const r = spawnSync('bun', [join(SKILL_DIR, 'scripts/theme.ts'), ...args], {
     cwd: folder,
     encoding: 'utf8',
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, FAKE_SHOPIFY: shop },
+    env: { ...process.env, PATH: pathWith(bin), FAKE_SHOPIFY: shop },
   })
   try {
     return JSON.parse(r.stdout) as Result
@@ -42,11 +43,7 @@ beforeEach(() => {
   folder = join(dir, 'theme')
   bin = join(dir, 'bin')
   mkdirSync(bin)
-  // Linked like a global install, so theme.ts must find the entry script and run it on Bun: the file has no
-  // shebang or execute bit, so running it as a plain command would fail.
-  cpSync(join(SKILL_DIR, 'tests/fake-shopify.ts'), join(bin, 'cli/run.ts'))
-  chmodSync(join(bin, 'cli/run.ts'), 0o755)
-  symlinkSync(join(bin, 'cli/run.ts'), join(bin, 'shopify'))
+  installFakeShopify(bin, readFileSync(join(SKILL_DIR, 'tests/fake-shopify.ts'), 'utf8'))
   write(shop, 'themes.json', JSON.stringify([{ id: LIVE, name: 'Live', role: 'live' }]))
   write(shop, 'calls.log', '')
   write(themeDir(LIVE), 'sections/hero.liquid', '<h1>Live</h1>\n')
@@ -218,12 +215,19 @@ test('never falls back to a Shopify CLI that Bun cannot run', () => {
   // A `shopify` that isn't a JavaScript entry point (a Node wrapper script, say), and no Bun global install.
   const wrapperBin = join(dir, 'wrapper-bin')
   mkdirSync(wrapperBin)
-  write(wrapperBin, 'shopify', `#!/bin/sh\necho ran >> ${join(dir, 'wrapper-ran')}\n`)
-  chmodSync(join(wrapperBin, 'shopify'), 0o755)
+  if (windows) write(wrapperBin, 'shopify.cmd', `@echo ran>> "${join(dir, 'wrapper-ran')}"\r\n`)
+  else {
+    write(wrapperBin, 'shopify', `#!/bin/sh\necho ran >> ${join(dir, 'wrapper-ran')}\n`)
+    chmodSync(join(wrapperBin, 'shopify'), 0o755)
+  }
   const r = spawnSync('bun', [join(SKILL_DIR, 'scripts/theme.ts'), 'start'], {
     cwd: folder,
     encoding: 'utf8',
-    env: { ...process.env, PATH: `${wrapperBin}:${dirname(process.execPath)}:/usr/bin:/bin`, BUN_INSTALL_GLOBAL_DIR: join(dir, 'no-bun-global') },
+    env: {
+      ...process.env,
+      PATH: [wrapperBin, dirname(process.execPath), ...(windows ? [join(process.env.SystemRoot ?? 'C:\\Windows', 'System32')] : ['/usr/bin', '/bin'])].join(delimiter),
+      BUN_INSTALL_GLOBAL_DIR: join(dir, 'no-bun-global'),
+    },
   })
   const result = JSON.parse(r.stdout) as Result
   expect(result.ok).toBe(false)
