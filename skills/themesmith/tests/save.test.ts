@@ -435,3 +435,9 @@ test('formats and saves a file whose name has an accent', () => {
   expect(result.ok).toBe(true)
   expect(readFileSync(join(repo, 'format.log'), 'utf8')).toBe('sections/café.liquid\n')
 })
+
+test.skipIf(windows)('keeps a backslash that is part of a file name on Mac and Linux', () => {
+  writeFileSync(join(repo, 'sections/a\\b.liquid'), '<p>odd name</p>\n')
+  save('--message', 'Odd name', '--no-push')
+  expect(readFileSync(join(repo, 'format.log'), 'utf8')).toBe('sections/a\\b.liquid\n')
+})
