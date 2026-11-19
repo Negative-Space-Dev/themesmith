@@ -12,7 +12,7 @@ If it lists no `units`, go on. If it lists some, review them now as in steps 2 a
 
 ## 2. Save
 
-Saving formats every changed file whole (Prettier's Liquid support can't format part of a file), so the first save that touches an unformatted file also reformats the rest of it. Mention that in the pull request when it happens so the reviewer can tell formatting from the change.
+Saving formats every changed file whole (Prettier's Liquid support can't format part of a file), so the first save that touches an unformatted file also reformats the rest of it. Mention that in the pull request when it happens so the reviewer can tell formatting from the change. A file the formatter can't read (old HTML that was never well formed) is saved as it is, and the save's `format` step names it; mention that too.
 
 ```bash
 bun <skill>/scripts/save.ts --message "<what changed, in plain words>"
@@ -22,7 +22,7 @@ If it fails, explain the failing step in plain words, fix it, and save again.
 
 ## 3. Open the pull request
 
-If the branch has no pull request yet, open one against the default branch with `gh pr create`. The description has three parts:
+If the branch has no pull request yet, open one against the default branch with `gh pr create`. If the person turned down the GitHub CLI at setup, give them the link `https://github.com/<owner>/<repo>/compare/<default branch>...<this branch>?expand=1` and the description below to paste, and ask them to click **Create pull request**. The description has three parts:
 
 - **What changed**: plain words a store owner would use ("The homepage banner now shows the fall sale headline").
 - **Review**: what the code check fixed, and the findings left for the reviewer from `.themesmith/review-notes.md`, each with its rule ID and `path:line`. Findings that were already in the code before this change go under a separate "Already in the code" heading.

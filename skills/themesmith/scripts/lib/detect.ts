@@ -3,6 +3,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, relative } from 'node:path'
+import { defaultBranch as namedDefaultBranch, onGitHub } from './git.ts'
 import { exec } from './exec.ts'
 import { globMatch, type Command, type DevModeMarker, type Mode } from './profile.ts'
 
@@ -25,6 +26,8 @@ export type SuggestedProfile = {
 }
 
 const STORE = /\b([a-z0-9][a-z0-9-]*\.myshopify\.com)\b/
+// Store names that docs use as examples, never a real theme's store.
+const PLACEHOLDER_STORE = /^(?:example|examples|your-?store(?:-name)?|store-?name|your-?shop|shop|test|demo|sample|xxx+)$/
 
 const git = async (root: string, ...args: string[]) => {
   const r = await exec(['git', ...args], { cwd: root, timeout: 15_000 })
@@ -76,8 +79,8 @@ function storeInFiles(root: string): string | null {
   for (const file of ['README.md', 'readme.md', 'package.json', 'shopify.theme.toml', '.shopify/project.json']) {
     const path = join(root, file)
     if (existsSync(path)) {
-      const match = readFileSync(path, 'utf8').match(STORE)
-      if (match) return match[1]
+      const real = [...readFileSync(path, 'utf8').matchAll(new RegExp(STORE, 'g'))].map((m) => m[1]).find((s) => !PLACEHOLDER_STORE.test(s.replace(/\.myshopify\.com$/, '')))
+      if (real) return real
     }
   }
   return null
@@ -141,21 +144,15 @@ function protectedPatterns(defaultBranch: string, bases: string[]): string[] {
 }
 
 export async function suggestProfile(root: string): Promise<SuggestedProfile> {
-  const [origin, log, head] = await Promise.all([
-    git(root, 'remote', 'get-url', 'origin'),
-    git(root, 'log', '--format=%s', '-500'),
-    git(root, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'),
-  ])
+  const [origin, log] = await Promise.all([git(root, 'remote', 'get-url', 'origin'), git(root, 'log', '--format=%s', '-500')])
   // Shopify's GitHub integration commits as "Update from Shopify for theme <repo>/<branch>", most often on the
   // branch the live theme follows.
   const syncs = new Map<string, number>()
   for (const m of log.matchAll(/Update from Shopify for theme [^/\s]+\/(\S+)/g)) syncs.set(m[1], (syncs.get(m[1]) ?? 0) + 1)
   const connected = [...syncs.keys()].sort((a, b) => syncs.get(b)! - syncs.get(a)!)
   // The default branch: what origin/HEAD names, else main or master, else the branch Shopify syncs most.
-  const fromHead = head.replace(/^origin\//, '')
-  const named = fromHead ? null : await git(root, 'for-each-ref', '--format=%(refname:lstrip=-1)', 'refs/heads/main', 'refs/heads/master', 'refs/remotes/origin/main', 'refs/remotes/origin/master')
-  const defaultBranch = fromHead || named?.split('\n').find(Boolean) || connected[0] || 'main'
-  const github = origin.includes('github.com')
+  const defaultBranch = namedDefaultBranch(root) ?? connected[0] ?? 'main'
+  const github = onGitHub(origin)
   const mode: Mode = github ? 'github' : 'cli'
   const modeSource = github
     ? connected.length > 0
@@ -190,16 +187,33 @@ export async function suggestProfile(root: string): Promise<SuggestedProfile> {
 
   const dev: Command[] = [{ cwd: '.', run: 'bun {skill}/scripts/shopify.ts theme dev --store {store}' }]
   const build: Command[] = []
+  // Files a build writes into the theme: the `-o`/`--output` of its build and dev scripts (Tailwind CLI, esbuild,
+  // Sass and the like).
+  const outputs = new Set<string>()
   for (const dir of packageDirs(root)) {
     // A Shopify app in the same repository has its own `shopify app dev`; only theme asset builds belong here.
     if (existsSync(join(dir, 'shopify.app.toml'))) continue
-    const vite = readdirSync(dir).some((f) => /^vite\.config\./.test(f))
-    const scripts = (JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { scripts?: Record<string, string> }).scripts ?? {}
+    let scripts: Record<string, string>
+    try {
+      scripts = (JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { scripts?: Record<string, string> }).scripts ?? {}
+    } catch {
+      // A package.json no tool can read builds nothing.
+      continue
+    }
     const cwd = relative(root, dir) || '.'
-    // A root `dev` script usually wraps `shopify theme dev`, which the first command already runs.
-    if (!vite && !/\bvite\b/.test(`${scripts.dev ?? ''} ${scripts.build ?? ''}`)) continue
-    if (scripts.dev && !/shopify\s+theme\s+dev/.test(scripts.dev)) dev.push({ cwd, run: `${runner(dir)} dev` })
-    if (scripts.build) build.push({ cwd, run: `${runner(dir)} build` })
+    // A `build` that runs the Shopify CLI (`shopify theme package`, say) isn't an asset build.
+    if (scripts.build && !/\bshopify\b/.test(scripts.build)) build.push({ cwd, run: `${runner(dir)} build` })
+    // A `dev` script that starts the Shopify CLI, itself or through scripts it runs, would start a second preview
+    // beside the first command.
+    const runsOthers = /\b(?:npm-run-all|run-[ps]|concurrently|npm run|pnpm|yarn|bun run)\b/.test(scripts.dev ?? '')
+    const startsShopify = /\bshopify\b/.test(scripts.dev ?? '') || (runsOthers && Object.values(scripts).some((v) => /shopify\s+theme\s+dev/.test(v)))
+    if (scripts.dev && !startsShopify) dev.push({ cwd, run: `${runner(dir)} dev` })
+    for (const s of [scripts.build, scripts.dev]) {
+      for (const m of (s ?? '').matchAll(/(?:^|\s)(?:-o|--output|--outfile)[\s=]+['"]?([^\s'"]+)/g)) {
+        const out = relative(root, join(dir, m[1])).replace(/\\/g, '/')
+        if (/^(assets|snippets)\//.test(out)) outputs.add(out)
+      }
+    }
   }
 
   // Build tools such as vite-plugin-shopify write a snippet that loads the built files. In dev mode it points at
@@ -214,7 +228,7 @@ export async function suggestProfile(root: string): Promise<SuggestedProfile> {
     const committed = await git(root, 'show', `HEAD:snippets/${f}`)
     for (const m of committed.matchAll(/['"]([A-Za-z]+_)[^'"/]*\.(?:js|css)['"]/g)) assetPrefixes.add(m[1])
   }
-  const generated = [...[...assetPrefixes].map((p) => `assets/${p}*`), ...snippets.map((f) => `snippets/${f}`)]
+  const generated = [...[...assetPrefixes].map((p) => `assets/${p}*`), ...snippets.map((f) => `snippets/${f}`), ...outputs]
 
   return { store, storeSource, storeUnsure, storeOptions, mode, modeSource, protectedBranches, dev, build, devModeMarkers, generated }
 }

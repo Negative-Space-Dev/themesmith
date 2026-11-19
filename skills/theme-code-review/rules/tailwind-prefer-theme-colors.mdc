@@ -20,7 +20,8 @@ bun "<skill-dir>/scripts/cli.ts" check tailwind <file>
 
 Flags color utilities with arbitrary hex, rgb, hsl, or oklch values.
 
-Before proposing a new color, **read the project's `tailwind.config`** — our
+Before proposing a new color, **read the project's `tailwind.config`** (Tailwind v3) or
+its CSS `@theme` block (Tailwind v4) — our
 themes usually define a rich palette already.
 
 ## Our color patterns

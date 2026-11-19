@@ -19,6 +19,8 @@ let theme: string
 const env = () => ({
   ...process.env,
   HOME: home,
+  // Windows finds the home folder through USERPROFILE.
+  USERPROFILE: home,
   XDG_CACHE_HOME: join(home, '.cache'),
   XDG_CONFIG_HOME: join(home, '.config'),
   // Packages come from the real cache, so installing them needs no network.

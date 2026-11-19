@@ -1,10 +1,11 @@
 # Tailwind CSS
 
 - **id:** tailwind
-- **applies-when:** The code uses Tailwind utility classes (`class` /
-  `className`), `@apply`, or Tailwind config.
-- **detect-signal:** `class=`, `className`, `@apply`, `@tailwind`,
-  `tailwind.config`
+- **applies-when:** The project uses Tailwind: a `tailwind.config`, Tailwind in
+  `package.json`, or Tailwind CSS (`@tailwind`, `@import "tailwindcss"`, `@theme`,
+  `@apply`).
+- **detect-signal:** `tailwind.config`, a `tailwindcss` dependency, `@tailwind`,
+  `@import "tailwindcss"`, `@theme`, `@apply`
 
 ---
 

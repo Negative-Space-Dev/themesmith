@@ -27,7 +27,7 @@
 
 - **applies-when:** a `<video>` or video `<iframe>` is rendered
 - **check:** auto
-- **fix:** auto
+- **fix:** propose
 - **severity:** medium
 - **rule:** rules/video-lazy-load-offscreen.mdc
 

@@ -1,6 +1,6 @@
 {
   "name": "themesmith-skill",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "The themesmith skill. Its version is themesmith's: raise it on main to release. The dependencies are the libraries its scripts load: Theme Check, at the version Shopify CLI 5.0.1 bundles (theme-check-node 3.30.1), to check only the files a change touched.",
   "dependencies": {

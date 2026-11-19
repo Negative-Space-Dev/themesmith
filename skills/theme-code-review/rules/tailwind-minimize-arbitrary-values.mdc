@@ -15,7 +15,8 @@ often unnecessary when a nearby scale or config token is close enough.
 Use this order:
 
 1. **Default Tailwind scale** — `w-80`, `gap-4`, `text-sm`, `rounded-lg`.
-2. **Existing theme config** — check `tailwind.config` for project tokens before
+2. **Existing theme config** — check `tailwind.config` (v3) or the CSS `@theme` block (v4)
+   for project tokens before
    adding new ones or using arbitrary values (see TW-02 for patterns).
 3. **New theme config token** — when the value should be part of the system.
 4. **Arbitrary values (last resort)** — only when no close value exists **and**
@@ -34,7 +35,7 @@ bun "<skill-dir>/scripts/cli.ts" check tailwind <file>
 Flags utility classes with arbitrary `[…]` values in `class`, `className`, or
 `@apply`. For each finding:
 
-1. Read `tailwind.config.js` / `tailwind.config.ts` in the theme.
+1. Read `tailwind.config.js` / `tailwind.config.ts` (Tailwind v3) or the `@theme` block in the main CSS file for Tailwind v4.
 2. Check whether an existing token already covers the value (or is close enough).
 3. Apply the decision order above.
 

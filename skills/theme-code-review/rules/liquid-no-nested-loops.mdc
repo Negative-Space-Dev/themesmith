@@ -17,7 +17,9 @@ slow or timeout-prone Liquid renders.
 bun "<skill-dir>/scripts/cli.ts" check liquid-performance <file>
 ```
 
-Flags nested `{% for %}` blocks.
+Flags nested `{% for %}` blocks where either loop goes over a list that can be large
+(products, variants, collections, search results, articles). Nested loops over
+small fixed lists, such as `product.options_with_values` and their values, are fine.
 
 ## How to fix
 

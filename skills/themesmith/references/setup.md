@@ -19,7 +19,7 @@ After a yes, install it, then say `✅ Bun <version> installed`:
 bun <skill>/scripts/doctor.ts
 ```
 
-It checks everything at the same time, in about a second, and changes nothing. Send one message, then wait for the answer:
+It checks everything at the same time, in a few seconds, and changes nothing. Send one message, then wait for the answer:
 
 > This theme needs a quick one-time setup before I [their request in a few words]. Here's what I found:
 >
@@ -30,7 +30,7 @@ It checks everything at the same time, in about a second, and changes nothing. S
 >
 > OK to install what's missing and save these settings? Tell me if you want anything different.
 
-That is the only question. Don't ask about branches or anything else the doctor already worked out: it protects the base branch (and any branch GitHub Actions uses as a base) without asking. Leave out the settings part when the theme already has its profile, and ask about the store only when `confirm` does: it wasn't found, several stores match ("which one: …?"), or it is marked as a guess. Use your question tool if you have one, with two short options (go ahead, or change something). If they want something different, such as no GitHub CLI or a different store, note it for step 3. If they say no to everything, explain in one line what won't work, and stop.
+That is the only question. Don't ask about branches or anything else the doctor already worked out: it protects the base branch (and any branch GitHub Actions uses as a base) without asking. Once Shopify sign-in works, it also finds the branch the live theme follows, if it isn't protected yet: `--fix` protects it. Leave out the settings part when the theme already has its profile, and ask about the store only when `confirm` does: it wasn't found, several stores match ("which one: …?"), or it is marked as a guess. Use your question tool if you have one, with two short options (go ahead, or change something). If they want something different, such as no GitHub CLI or a different store, note it for step 3. If they say no to everything, explain in one line what won't work, and stop.
 
 ## 3. Set everything up at once
 
@@ -38,7 +38,7 @@ That is the only question. Don't ask about branches or anything else the doctor 
 bun <skill>/scripts/doctor.ts --fix [--store <x>.myshopify.com] [--skip <tool,...>]
 ```
 
-Pass only what the person changed or added in step 2; everything else comes from the confirmed settings. `--skip` takes tool names from the chart's `tools` list (`gh`, `npm`, and so on) for installs they declined. Before running it, say one line: "Setting up now. This takes a minute or two."
+Pass only what the person changed or added in step 2; everything else comes from the confirmed settings. `--skip` takes tool names from the chart's `tools` list (`gh`, `npm`, and so on) for installs they declined. Turning down the GitHub CLI (`gh`) is remembered for this theme: setup finishes without it, and you give the person a link to open each pull request on GitHub themselves. The other tools are needed. Before running it, say one line: "Setting up now. This takes a minute or two."
 
 It installs and updates the tools in parallel, saves the profile, and sets up the theme's formatting and checking tools and its `AGENTS.md` rules. The rules tell any agent that opens the theme without the skill how to install it on that computer. Then, in the background, it starts the sign-ins and a full Theme Check of the theme. When it finishes, send one message:
 
@@ -64,7 +64,7 @@ It waits for the sign-ins and the full Theme Check, then checks everything again
 
 > ✅ Setup is done. [themeCheck.summary in plain words, e.g. "Shopify's checker found no problems in your theme."] Now [their request in a few words].
 
-If the full Theme Check found errors, say how many in one line. They were already in the theme before this work, and they don't block it. If anything else is still ✗, fix it with step 3 and run `--wait` again.
+If the full Theme Check found errors, say how many in one line. They were already in the theme before this work, and they don't block it. If anything else is still ✗, fix it with step 3 and run `--wait` again. If **Theme files at the top of this folder** is ✗, the theme lives in a subfolder (its `detail` names it): tell the person themesmith can't work on a theme set up that way yet, and stop.
 
 Then start the request with its workflow. In GitHub mode, `start.ts` commits the setup files as the first commit of that work.
 

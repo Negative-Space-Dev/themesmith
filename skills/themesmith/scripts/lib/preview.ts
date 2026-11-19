@@ -12,7 +12,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join, relative } from 'node:path'
 import { exec } from './exec.ts'
 import { globMatch, type Profile } from './profile.ts'
 import { describeError, runShopifyJsonAsync } from './shopify.ts'
@@ -89,7 +89,7 @@ export async function findThemes(root: string, profile: Profile, branch: string)
 // so the preview doesn't trust a connected theme it can't check.
 export async function changedThemeFiles(root: string, from: string | null): Promise<Map<string, string | null> | null> {
   if (!from) return null
-  const diff = await exec(['git', 'diff', '--name-only', '--no-renames', from, 'HEAD'], { cwd: root })
+  const diff = await exec(['git', '-c', 'core.quotepath=false', 'diff', '--name-only', '--no-renames', from, 'HEAD'], { cwd: root })
   if (!diff.ok) return null
   const ignores = readIgnores(root)
   const files = diff.stdout
@@ -166,7 +166,8 @@ export function connectTip(profile: Profile, branch: string): string {
   return (
     'Tip: a GitHub-connected preview theme is better, because GitHub-connected themes sync changes in both directions. ' +
     `To set it up, go to your themes (https://${profile.store}/admin/themes), choose Add theme, then Connect from GitHub, and pick this repository and the branch \`${branch}\`. ` +
-    'Once it is connected, themesmith finds it on the next save and gives you its link instead.'
+    'Once it is connected, themesmith finds it on the next save and gives you its link instead. ' +
+    "Until then, ask me for changes rather than editing this preview in Shopify's theme editor: the next save replaces it, editor changes included."
   )
 }
 
@@ -184,7 +185,7 @@ export async function pushDevelopment(root: string, profile: Profile, branch: st
   const r = await cli<Pushed>(root, profile, 'push', '--development', '--development-context', devContext(branch), '--path', root)
   if (!r.ok) return r
   if (r.result.status !== 'success' && r.result.status !== 'partial') return { ok: false, step: 'preview', message: `The Shopify CLI didn't upload the preview (${r.result.status}).` }
-  const issues = r.result.issues.map((i) => ({ file: i.filePath.replace(`${root}/`, ''), message: i.message }))
+  const issues = r.result.issues.map((i) => ({ file: isAbsolute(i.filePath) ? relative(root, i.filePath).replace(/\\/g, '/') : i.filePath, message: i.message }))
   if (!r.exitedOk || issues.length > 0) {
     return { ok: false, step: 'preview', message: `Some files didn't upload to the preview theme "${r.result.theme.name}". Fix them and save again.`, issues }
   }

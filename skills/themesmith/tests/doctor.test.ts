@@ -17,13 +17,13 @@ function write(file: string, content: string) {
   writeFileSync(file, content)
 }
 
-// A Shopify CLI linked like a global install: reports `version`, lists no themes, and passes Theme Check.
-function installShopify(version: string) {
+// A Shopify CLI linked like a global install: reports `version`, lists the given themes, and passes Theme Check.
+function installShopify(version: string, themes: { id: string; name: string; role: string }[] = []) {
   write(
     join(dir, 'bin/cli/run.ts'),
     `const a = process.argv.slice(2)
 if (a[0] === 'version') console.log(${JSON.stringify(`\n${version}`)})
-else if (a[1] === 'list') console.log(JSON.stringify({ themes: [] }))
+else if (a[1] === 'list') console.log(JSON.stringify({ themes: ${JSON.stringify(themes)} }))
 else if (a[1] === 'check' && a.includes('--init')) require('fs').writeFileSync(a[a.indexOf('--path') + 1] + '/.theme-check.yml', 'extends: theme-check:recommended\\n')
 else if (a[1] === 'check') console.log(JSON.stringify({ valid: true, issues: [], errorCount: 0, warningCount: 0, infoCount: 0 }))
 `
@@ -38,13 +38,28 @@ function doctor(args: string[] = [], env: Record<string, string> = {}) {
     cwd: theme,
     encoding: 'utf8',
     // The store the Shopify CLI last used is read from its config folder: never the real one in tests.
-    env: { ...process.env, PATH: `${join(dir, 'bin')}:${process.env.PATH}`, BUN_INSTALL_GLOBAL_DIR: join(dir, 'no-bun-global'), XDG_CONFIG_HOME: join(dir, 'config'), ...env },
+    env: {
+      ...process.env,
+      PATH: `${join(dir, 'bin')}:${process.env.PATH}`,
+      BUN_INSTALL_GLOBAL_DIR: join(dir, 'no-bun-global'),
+      XDG_CONFIG_HOME: join(dir, 'config'),
+      APPDATA: join(dir, 'config'),
+      ...(process.platform === 'darwin' ? { HOME: join(dir, 'home') } : {}),
+      ...env,
+    },
   })
   try {
     return JSON.parse(r.stdout)
   } catch {
     throw new Error(`doctor printed no JSON:\n${r.stdout}\n${r.stderr}`)
   }
+}
+
+// Where the Shopify CLI keeps one of its config files on this system, under the test's folders (see cliConfig in
+// lib/detect.ts): ~/Library/Preferences on a Mac, %APPDATA% on Windows, $XDG_CONFIG_HOME elsewhere.
+function cliConfigFile(name: string): string {
+  if (process.platform === 'darwin') return join(dir, 'home/Library/Preferences', name, 'config.json')
+  return join(dir, 'config', name, process.platform === 'win32' ? 'Config' : '', 'config.json')
 }
 
 const profile = (extra: object = {}) =>
@@ -140,13 +155,13 @@ test('finds the store from the repository before the store the Shopify CLI last 
   spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: theme })
   spawnSync('git', ['remote', 'add', 'origin', 'git@github.com:acme/acme-audio.git'], { cwd: theme })
   // The CLI last used another store, and has also worked with this one.
-  write(join(dir, 'config/shopify-cli-theme-conf-nodejs/config.json'), JSON.stringify({ themeStore: 'other-brand.myshopify.com' }))
-  write(join(dir, 'config/shopify-cli-theme-store-password-nodejs/config.json'), JSON.stringify({ 'other-brand': 'x', 'acme-audio': 'x' }))
+  write(cliConfigFile('shopify-cli-theme-conf-nodejs'), JSON.stringify({ themeStore: 'other-brand.myshopify.com' }))
+  write(cliConfigFile('shopify-cli-theme-store-password-nodejs'), JSON.stringify({ 'other-brand': 'x', 'acme-audio': 'x' }))
   expect(doctor().confirm).toStartWith('- **Store:** acme-audio.myshopify.com\n')
 
   // Two stores match the name and nothing settles it: the person picks.
   spawnSync('git', ['remote', 'set-url', 'origin', 'git@github.com:acme/acme.git'], { cwd: theme })
-  write(join(dir, 'config/shopify-cli-theme-store-password-nodejs/config.json'), JSON.stringify({ 'acme-audio': 'x', 'acme-wholesale': 'x' }))
+  write(cliConfigFile('shopify-cli-theme-store-password-nodejs'), JSON.stringify({ 'acme-audio': 'x', 'acme-wholesale': 'x' }))
   expect(doctor().confirm).toStartWith('- **Store:** which one: acme-audio.myshopify.com or acme-wholesale.myshopify.com?\n')
 
   // Nothing matches: the last-used store, marked as a guess.
@@ -159,4 +174,58 @@ test('--fix stops before changing anything when no store is known', () => {
   const r = doctor(['--fix'])
   expect(r).toEqual({ ok: false, message: "Pass --store with the store's .myshopify.com address." })
   expect(existsSync(join(theme, '.agents/themesmith.json'))).toBe(false)
+})
+
+test('--fix loads the Liquid plugin in the format command when the theme\'s Prettier config leaves it out', () => {
+  installShopify('5.0.1')
+  profile({ format: [{ cwd: '.', run: 'bun x prettier --config .prettierrc.json --write {files}' }] })
+  write(join(theme, '.prettierrc.json'), JSON.stringify({ semi: false }))
+  expect(doctor(['--fix']).ok).toBe(true)
+  const saved = JSON.parse(readFileSync(join(theme, '.agents/themesmith.json'), 'utf8'))
+  expect(saved.format[0].run).toContain('--plugin @shopify/prettier-plugin-liquid')
+  expect(doctor().theme.find((i: { name: string }) => i.name === 'profile commands')).toMatchObject({ status: 'ok' })
+})
+
+test('a GitHub CLI the person turned down is remembered and not needed to be ready', () => {
+  installShopify('5.0.1')
+  profile({ mode: 'github' })
+  const path = join(theme, '.themesmith/skipped-tools.json')
+  doctor(['--fix', '--skip', 'gh'])
+  expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual(['gh'])
+  const r: Report = doctor()
+  expect(r.tools.map((t) => t.name)).not.toContain('gh')
+  expect(r.accounts.map((i) => i.name)).not.toContain('github sign-in')
+})
+
+test('protects the branch the live theme follows, found from the live theme\'s name', () => {
+  installShopify('5.0.1', [{ id: '1', name: 'acme-theme/production', role: 'live' }])
+  profile({ mode: 'github', protectedBranches: ['main'] })
+  spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: theme })
+  spawnSync('git', ['remote', 'add', 'origin', 'git@github.com:acme/acme-theme.git'], { cwd: theme })
+  const before: Report = doctor()
+  expect(before.accounts.find((i) => i.name === 'live branch')).toMatchObject({ status: 'missing' })
+
+  doctor(['--fix', '--skip', 'gh'], { GIT_SSH_COMMAND: 'false' })
+  expect(JSON.parse(readFileSync(join(theme, '.agents/themesmith.json'), 'utf8')).protectedBranches).toEqual(['main', 'production'])
+  expect(doctor().accounts.find((i: Item) => i.name === 'live branch')).toMatchObject({ status: 'ok', detail: 'production' })
+})
+
+test('a placeholder store in the README is not taken for the theme\'s store', () => {
+  installShopify('5.0.1')
+  spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: theme })
+  spawnSync('git', ['remote', 'add', 'origin', 'git@github.com:acme/acme-audio.git'], { cwd: theme })
+  write(cliConfigFile('shopify-cli-theme-store-password-nodejs'), JSON.stringify({ 'acme-audio': 'x' }))
+  write(join(theme, 'README.md'), 'Run `shopify theme dev --store your-store.myshopify.com`, e.g. example.myshopify.com.\n')
+  expect(doctor().confirm).toStartWith('- **Store:** acme-audio.myshopify.com\n')
+})
+
+test('says when the theme\'s files are in a subfolder, which themesmith does not work on', () => {
+  installShopify('5.0.1')
+  profile()
+  rmSync(join(theme, 'sections'), { recursive: true })
+  write(join(theme, 'theme/layout/theme.liquid'), '{{ content_for_layout }}\n')
+  const r: Report = doctor()
+  expect(r.ready).toBe(false)
+  expect(r.theme.find((i) => i.name === 'theme folder')).toMatchObject({ status: 'missing', needs: 'you' })
+  expect(r.theme.find((i) => i.name === 'theme folder')!.detail).toStartWith("the theme's files are in theme/")
 })

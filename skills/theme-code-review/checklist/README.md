@@ -10,7 +10,7 @@ review skill only when a check fails or a manual item applies.
 | `video`              | `video.md`               | Code embeds video                                         | `<video`, `youtube`, `vimeo` |
 | `liquid-performance` | `liquid-performance.md`  | Loops, globals, JSON, dates, renders, repeated blocks     | `{% for`, `\| json`, `'now' \| date`, `{% assign` |
 | `modals-dialogs`     | `modals-dialogs.md`      | Modal, dialog, drawer, or popover                         | `<dialog`, `modal`, `drawer` |
-| `tailwind`           | `tailwind.md`            | Tailwind utility classes, `@apply`, or config             | `class=`, `@apply`, `tailwind.config`, `-[` |
+| `tailwind`           | `tailwind.md`            | The project uses Tailwind                                 | `tailwind.config`, `tailwindcss` dependency, `@tailwind`, `@theme`, `@apply` |
 
 ## File layout
 

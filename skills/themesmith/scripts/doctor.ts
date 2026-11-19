@@ -13,10 +13,11 @@
 //   bun doctor.ts --skip-update   stops offering the newest version
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { suggestProfile, type SuggestedProfile } from './lib/detect.ts'
 import { exec, isRunning, startDetached } from './lib/exec.ts'
-import { findRoot, loadProfile, parseProfile, PROFILE_PATH, ProfileError, type Profile } from './lib/profile.ts'
+import { onGitHub } from './lib/git.ts'
+import { findRoot, globMatch, loadProfile, parseProfile, PROFILE_PATH, ProfileError, type Profile } from './lib/profile.ts'
 import { arg } from './lib/run.ts'
 import { describeError, runShopifyJsonAsync } from './lib/shopify.ts'
 import { checkTools, installChart, installTools, platform, toolChart, type ToolName, type ToolStatus } from './lib/tools.ts'
@@ -37,6 +38,34 @@ const root = await (async () => {
 const jobs = join(root, '.themesmith', 'jobs')
 const themeCheckJob = join(jobs, 'theme-check.json')
 
+type ThemeCheckJob = { done: boolean; pid?: number; summary?: string; errors?: unknown[] }
+// The background full Theme Check's record. Unreadable (its process was killed while writing) counts as none.
+function readThemeCheckJob(): ThemeCheckJob | null {
+  try {
+    return JSON.parse(readFileSync(themeCheckJob, 'utf8')) as ThemeCheckJob
+  } catch {
+    return null
+  }
+}
+
+// Where the theme's files are, when not at the top of this folder: `shopify.theme.toml`'s path, or a folder one or
+// two levels down holding layout/theme.liquid. Themesmith's scripts work on themes whose files are at the top.
+function themeSubfolder(): string | null {
+  const toml = join(root, 'shopify.theme.toml')
+  const path = existsSync(toml) ? readFileSync(toml, 'utf8').match(/^\s*path\s*=\s*["']([^"']*)["']/m)?.[1] : undefined
+  if (path && !['', '.', './'].includes(path.trim())) return path.trim().replace(/^\.\//, '')
+  if (existsSync(join(root, 'layout', 'theme.liquid'))) return null
+  const dirs = (dir: string) => {
+    try {
+      return readdirSync(join(root, dir), { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules').map((e) => (dir ? `${dir}/${e.name}` : e.name))
+    } catch {
+      return []
+    }
+  }
+  const candidates = dirs('').flatMap((d) => [d, ...dirs(d)])
+  return candidates.find((d) => existsSync(join(root, d, 'layout', 'theme.liquid'))) ?? null
+}
+
 function readProfile(): Profile | null {
   try {
     return loadProfile(root)
@@ -50,25 +79,42 @@ const ok = (name: string, label: string, detail?: string, needs: Item['needs'] =
 const missing = (name: string, label: string, needs: Item['needs'], detail?: string): Item => ({ name, label, status: 'missing', needs, ...(detail ? { detail } : {}) })
 
 async function githubTheme(profile: Profile | null): Promise<boolean> {
-  return profile ? profile.mode === 'github' : (await exec(['git', 'remote', 'get-url', 'origin'], { cwd: root })).out.includes('github.com')
+  return profile ? profile.mode === 'github' : onGitHub((await exec(['git', 'remote', 'get-url', 'origin'], { cwd: root })).stdout.trim())
+}
+
+// Tools the person can turn down at setup (`--skip`): without the GitHub CLI, they open pull requests on GitHub
+// themselves. Turned-down tools are remembered for this theme and no longer needed for it to be ready.
+const OPTIONAL_TOOLS: ToolName[] = ['gh']
+const skippedPath = join(root, '.themesmith', 'skipped-tools.json')
+function skippedTools(): ToolName[] {
+  try {
+    return JSON.parse(readFileSync(skippedPath, 'utf8')) as ToolName[]
+  } catch {
+    return []
+  }
 }
 
 // Git and the GitHub CLI only matter in GitHub mode.
-const neededTools = (github: boolean): ToolName[] => ['bun', ...(github ? (['git', 'gh'] as const) : []), 'npm', 'shopify', 'theme-check']
+const neededTools = (github: boolean): ToolName[] =>
+  (['bun', ...(github ? (['git', 'gh'] as const) : []), 'npm', 'shopify', 'theme-check'] as ToolName[]).filter((t) => !skippedTools().includes(t))
+
+const LIQUID_PLUGIN = '@shopify/prettier-plugin-liquid'
 
 // Profile commands that won't work as written: the Shopify CLI must run through the wrapper (on Bun), Shopify CLI
-// 5 removed `theme dev --poll`, and the whole-theme Theme Check gives way to checking only the changed files.
-function commandFixes(profile: Profile): { problems: string[]; fixed: Profile } {
+// 5 removed `theme dev --poll`, the whole-theme Theme Check gives way to checking only the changed files, and
+// Prettier needs the Liquid plugin loaded when the theme's Prettier config doesn't list it (`liquidReady` false).
+function commandFixes(profile: Profile, liquidReady: boolean | null = null): { problems: string[]; fixed: Profile } {
   const problems: string[] = []
   const fixCommand = (run: string) => {
     let next = run.replace(/^(npx\s+)?shopify\s/, 'bun {skill}/scripts/shopify.ts ')
     if (/\stheme\s+dev\b/.test(next)) next = next.replace(/\s--poll\b/, '')
     if (/scripts\/shopify\.ts theme check\b/.test(next)) next = 'bun {skill}/scripts/theme-check.ts {files}'
+    if (liquidReady === false && !next.includes(LIQUID_PLUGIN)) next = next.replace(/(^|\s)prettier(?=\s)/, `$1prettier --plugin ${LIQUID_PLUGIN}`)
     if (next !== run) problems.push(`\`${run}\` → \`${next}\``)
     return next
   }
   const fix = (commands: Profile['dev']) => commands.map((c) => ({ ...c, run: fixCommand(c.run) }))
-  return { problems, fixed: { ...profile, dev: fix(profile.dev), build: fix(profile.build), checks: fix(profile.checks) } }
+  return { problems, fixed: { ...profile, dev: fix(profile.dev), build: fix(profile.build), format: fix(profile.format), checks: fix(profile.checks) } }
 }
 
 type Tooling = {
@@ -76,6 +122,7 @@ type Tooling = {
   missingPackages: string[]
   installed: boolean
   prettierConfig: string | null
+  liquidReady: boolean | null
   themeCheckConfig: boolean
   missingThemeCheckIgnores: unknown[]
   missingIgnores: string[]
@@ -93,8 +140,12 @@ async function setupTools(apply = false): Promise<Tooling> {
 
 function themeItems(profile: Profile | null, t: Tooling | Error): Item[] {
   if (t instanceof Error) return [missing('theme tools', 'Theme tools', 'setup', t.message)]
-  const problems = profile ? commandFixes(profile).problems : []
+  const problems = profile ? commandFixes(profile, t.liquidReady).problems : []
+  const subfolder = themeSubfolder()
   return [
+    ...(subfolder
+      ? [missing('theme folder', 'Theme files at the top of this folder', 'you', `the theme's files are in ${subfolder}/; themesmith works on a theme whose layout/, sections/ and other folders are at the top of the repository`)]
+      : []),
     profile ? ok('profile', 'Themesmith settings', `${profile.store}, ${profile.mode === 'github' ? 'GitHub' : 'CLI'} mode`) : missing('profile', 'Themesmith settings', 'setup'),
     ...(profile ? [problems.length ? missing('profile commands', 'Preview and check commands', 'setup', problems.join('; ')) : ok('profile commands', 'Preview and check commands')] : []),
     t.missingPackages.length === 0 && t.installed && t.prettierConfig ? ok('prettier', 'Code formatter (Prettier)') : missing('prettier', 'Code formatter (Prettier)', 'setup'),
@@ -105,27 +156,52 @@ function themeItems(profile: Profile | null, t: Tooling | Error): Item[] {
   ]
 }
 
-async function accountItems(profile: Profile | null, github: boolean): Promise<Item[]> {
+// The branch the live theme follows, when Shopify's GitHub integration connected it: the live theme is then named
+// "<repo>/<branch>", cut to 47 characters and "..." past 50 (a pattern then). Pushing to that branch publishes.
+function liveBranch(themes: { name: string; role: string }[], origin: string): string | null {
+  const repo = origin.match(/([^/:]+?)(?:\.git)?\/?$/)?.[1]?.toLowerCase()
+  const live = themes.find((t) => t.role === 'live')
+  if (!repo || !live || !live.name.toLowerCase().startsWith(`${repo}/`)) return null
+  const branch = live.name.slice(repo.length + 1)
+  return live.name.length === 50 && branch.endsWith('...') ? `${branch.slice(0, -3)}*` : branch || null
+}
+
+const protects = (profile: Profile, pattern: string) => profile.protectedBranches.some((p) => p === pattern || globMatch(p, pattern))
+
+async function accountItems(profile: Profile | null, github: boolean): Promise<{ items: Item[]; liveBranch: string | null }> {
   const [name, email, remote, gh, shopify] = await Promise.all([
     github ? exec(['git', 'config', 'user.name'], { cwd: root }) : null,
     github ? exec(['git', 'config', 'user.email'], { cwd: root }) : null,
     github ? exec(['git', 'remote', 'get-url', 'origin'], { cwd: root }) : null,
-    github ? exec(['gh', 'auth', 'status'], { timeout: 30_000 }) : null,
+    github && !skippedTools().includes('gh') ? exec(['gh', 'auth', 'status'], { timeout: 30_000 }) : null,
     profile ? runShopifyJsonAsync(['theme', 'list', '--store', profile.store, '--no-input'], { cwd: root, timeout: 60_000 }) : null,
   ])
   const items: Item[] = []
   if (github) {
     items.push(name!.ok ? ok('git name', 'Your name on saved work', name!.stdout.trim(), 'you') : missing('git name', 'Your name on saved work', 'you'))
     items.push(email!.ok ? ok('git email', 'Your email on saved work', email!.stdout.trim(), 'you') : missing('git email', 'Your email on saved work', 'you'))
-    items.push(remote!.ok && remote!.stdout.includes('github.com') ? ok('github remote', 'GitHub repository', remote!.stdout.trim(), 'you') : missing('github remote', 'GitHub repository', 'you', remote!.ok ? `origin is ${remote!.stdout.trim()}` : 'no origin remote'))
-    items.push(gh!.ok ? ok('github sign-in', 'GitHub sign-in', undefined, 'sign in') : missing('github sign-in', 'GitHub sign-in', 'sign in'))
+    // The profile says GitHub mode, so any origin counts: an SSH host alias or GitHub Enterprise address is the
+    // person's choice. Only a missing origin can't work.
+    items.push(remote!.ok ? ok('github remote', 'GitHub repository', remote!.stdout.trim(), 'you') : missing('github remote', 'GitHub repository', 'you', 'no origin remote'))
+    if (gh) items.push(gh.ok ? ok('github sign-in', 'GitHub sign-in', undefined, 'sign in') : missing('github sign-in', 'GitHub sign-in', 'sign in'))
   }
+  let live: string | null = null
   if (shopify) {
     items.push(
       shopify.kind === 'result'
         ? ok('shopify sign-in', 'Shopify sign-in', profile!.store, 'sign in')
         : missing('shopify sign-in', 'Shopify sign-in', 'sign in', shopify.verifyUrl ? `Shopify needs to confirm who you are: ${shopify.verifyUrl}` : describeError(shopify.error).split('\n')[0])
     )
+    if (github && remote?.ok && shopify.kind === 'result') {
+      live = liveBranch((shopify.result as { themes: { name: string; role: string }[] }).themes ?? [], remote.stdout.trim())
+      if (live) {
+        items.push(
+          protects(profile!, live)
+            ? ok('live branch', 'Live store branch protected', live)
+            : missing('live branch', 'Live store branch protected', 'setup', `your live theme follows "${live}", which isn't protected`)
+        )
+      }
+    }
   }
   // Shopify CLI 5 renamed the automation tokens and refuses to run when the new one is set beside an old one.
   const oldTokens = ['SHOPIFY_APP_AUTOMATION_TOKEN', 'SHOPIFY_CLI_PARTNERS_TOKEN'].filter((n) => process.env[n] !== undefined)
@@ -141,7 +217,7 @@ async function accountItems(profile: Profile | null, github: boolean): Promise<I
       )
     )
   }
-  return items
+  return { items, liveBranch: live }
 }
 
 function itemChart(title: string, items: Item[]): string {
@@ -163,6 +239,7 @@ function confirmText(s: SuggestedProfile): string {
           ? `which one: ${s.storeOptions.join(' or ')}?`
           : 'not found; ask for the `.myshopify.com` address'
     }`,
+    ...(s.build.length ? [`- **Build:** \`${s.build.map((c) => (c.cwd === '.' ? c.run : `${c.run} (in ${c.cwd})`)).join('`, `')}\` runs before every save, so the store gets the built files.`] : []),
     s.mode === 'github'
       ? `- **Finished work:** goes to GitHub for review. \`${s.protectedBranches.join('`, `')}\` is never changed directly.`
       : '- **Finished work:** goes to an unpublished copy of your theme, for you to publish.',
@@ -172,7 +249,7 @@ function confirmText(s: SuggestedProfile): string {
 async function inspect() {
   const profile = readProfile()
   const github = await githubTheme(profile)
-  const [tools, tooling, accounts, suggested, newer] = await Promise.all([
+  const [tools, tooling, { items: accounts, liveBranch: live }, suggested, newer] = await Promise.all([
     checkTools(neededTools(github)),
     setupTools().catch((e: Error) => e),
     accountItems(profile, github),
@@ -182,7 +259,7 @@ async function inspect() {
   const theme = themeItems(profile, tooling)
   const ready = tools.every((t) => t.state === 'ok') && [...theme, ...accounts].every((i) => i.status === 'ok')
   const chart = [toolChart(tools), itemChart('This theme', theme), ...(accounts.length ? [itemChart('Accounts', accounts)] : [])].join('\n\n')
-  return { profile, github, tools, tooling, theme, accounts, suggested, ready, chart, newer }
+  return { profile, github, tools, tooling, theme, accounts, liveBranch: live, suggested, ready, chart, newer }
 }
 
 // The files setup may change, by content, so the setup commit includes exactly the ones it did change.
@@ -218,8 +295,18 @@ function hash(path: string): string | null {
   return h.digest('hex')
 }
 
+async function setOriginHead() {
+  const head = await exec(['git', 'symbolic-ref', '-q', 'refs/remotes/origin/HEAD'], { cwd: root })
+  if (!head.ok) await exec(['git', 'remote', 'set-head', 'origin', '--auto'], { cwd: root, timeout: 60_000, env: { GIT_TERMINAL_PROMPT: '0' } })
+}
+
 async function fix() {
   const skip = new Set((arg('--skip') ?? '').split(',').filter(Boolean))
+  const remembered = [...skip].filter((t): t is ToolName => OPTIONAL_TOOLS.includes(t as ToolName))
+  if (remembered.length > 0) {
+    mkdirSync(dirname(skippedPath), { recursive: true })
+    writeFileSync(skippedPath, `${JSON.stringify([...new Set([...skippedTools(), ...remembered])])}\n`)
+  }
   const before = await inspect()
   if (before.tooling instanceof Error) return { ok: false, message: before.tooling.message }
   const tooling0 = before.tooling
@@ -243,7 +330,8 @@ async function fix() {
       generated: s.generated,
     })
   }
-  profile = commandFixes(profile).fixed
+  profile = commandFixes(profile, tooling0.liquidReady).fixed
+  if (before.liveBranch && !protects(profile, before.liveBranch)) profile = { ...profile, protectedBranches: [...profile.protectedBranches, before.liveBranch] }
   mkdirSync(join(root, '.agents'), { recursive: true })
   writeFileSync(join(root, PROFILE_PATH), `${JSON.stringify(profile, null, 2)}\n`)
 
@@ -253,6 +341,8 @@ async function fix() {
   const installs = installTools(toInstall)
   const themeSetup = (async () => {
     const gitConfig = [
+      // Scripts find the default branch through origin/HEAD, which a repository pushed from this folder lacks.
+      ...(profile!.mode === 'github' ? [setOriginHead()] : []),
       ...(arg('--git-name') ? [exec(['git', 'config', '--global', 'user.name', arg('--git-name')!])] : []),
       ...(arg('--git-email') ? [exec(['git', 'config', '--global', 'user.email', arg('--git-email')!])] : []),
     ]
@@ -262,6 +352,14 @@ async function fix() {
     return tooling
   })()
   const [installed, tooling] = await Promise.all([installs, themeSetup.catch((e: Error) => e)])
+  // Whether Prettier formats Liquid is known only once it's installed.
+  if (!(tooling instanceof Error)) {
+    const withPlugin = commandFixes(profile, tooling.liquidReady)
+    if (withPlugin.problems.length > 0) {
+      profile = withPlugin.fixed
+      writeFileSync(join(root, PROFILE_PATH), `${JSON.stringify(profile, null, 2)}\n`)
+    }
+  }
 
   // Remember what setup changed, so `start.ts` commits exactly those files.
   const changed = [...hashes].filter(([f, h]) => hash(f) !== h).map(([f]) => f)
@@ -273,7 +371,9 @@ async function fix() {
   // In the background: the full Theme Check (once per theme) and the sign-ins, which wait for the person.
   const shopifyReady = before.tools.find((t) => t.name === 'shopify')?.state === 'ok' || installed.find((i) => i.name === 'shopify')?.ok
   const background: string[] = []
-  if (shopifyReady && !existsSync(themeCheckJob)) {
+  const job = readThemeCheckJob()
+  // Once per theme, and again when an earlier run stopped before finishing.
+  if (shopifyReady && (!job || (!job.done && !(job.pid && isRunning(job.pid))))) {
     mkdirSync(jobs, { recursive: true })
     const pid = startDetached(['bun', join(SCRIPTS, 'theme-check.ts'), '--all', '--record'], { cwd: root, log: join(jobs, 'theme-check.log') })
     writeFileSync(themeCheckJob, `${JSON.stringify({ done: false, pid }, null, 2)}\n`)
@@ -311,15 +411,15 @@ async function wait() {
     (async () => {
       const end = Date.now() + 10 * 60_000
       while (existsSync(themeCheckJob) && Date.now() < end) {
-        const job = JSON.parse(readFileSync(themeCheckJob, 'utf8')) as { done: boolean; pid?: number }
-        if (job.done || (job.pid && !isRunning(job.pid))) return
+        const job = readThemeCheckJob()
+        if (!job || job.done || (job.pid && !isRunning(job.pid))) return
         await Bun.sleep(1000)
       }
     })()
   )
   await Promise.all(waits)
   const after = await inspect()
-  const job = existsSync(themeCheckJob) ? (JSON.parse(readFileSync(themeCheckJob, 'utf8')) as { done: boolean; summary?: string; errors?: unknown[] }) : null
+  const job = readThemeCheckJob()
   return { ready: after.ready, chart: after.chart, themeCheck: job?.done ? { summary: job.summary, errors: job.errors } : null }
 }
 

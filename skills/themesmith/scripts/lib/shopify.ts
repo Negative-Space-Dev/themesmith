@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, realpathSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { existsSync, mkdtempSync, realpathSync, rmdirSync, symlinkSync, unlinkSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
+import { dirname, join, resolve, sep } from 'node:path'
 import { exec } from './exec.ts'
 
 // The Shopify CLI always runs on Bun, never Node: Theme Check took 72s instead of 103s on a large theme, and the other
@@ -34,11 +34,33 @@ export function shopifyCommand(): string[] | null {
 
 export const NOT_INSTALLED = `The Shopify CLI isn't installed where Bun can run it. Install it with \`${SHOPIFY_INSTALL}\`.`
 
+// Theme Check stops applying .theme-check.yml's ignore list when the theme's path has a folder starting with a
+// dot (as in ~/.worktrees/... or .claude/worktrees/...): on a large theme it inspected 2183 files instead of 753
+// and reported 578 offenses instead of 2. Checking through a link whose path has no such folder gives the right
+// result. `done` removes only the link, never anything it points to.
+export function checkablePath(args: string[], cwd: string): { args: string[]; done: () => void } {
+  const pathFlag = args.indexOf('--path')
+  const themePath = resolve(cwd, pathFlag === -1 ? '.' : args[pathFlag + 1])
+  if (args[0] !== 'theme' || args[1] !== 'check' || !themePath.split(sep).some((part) => part.startsWith('.') && part.length > 1)) return { args, done: () => {} }
+  const link = join(mkdtempSync(join(tmpdir(), 'themesmith-check-')), 'theme')
+  symlinkSync(themePath, link, 'junction')
+  const linked = pathFlag === -1 ? [...args, '--path', link] : args.map((a, i) => (i === pathFlag + 1 ? link : a))
+  return {
+    args: linked,
+    done: () => {
+      unlinkSync(link)
+      rmdirSync(dirname(link))
+    },
+  }
+}
+
 export function runShopify(args: string[], options: { cwd: string; timeout?: number; inherit?: boolean }) {
   const command = shopifyCommand()
   if (!command) return { ok: false, status: null, stdout: '', stderr: '', out: NOT_INSTALLED }
   const [cmd, ...pre] = command
-  const r = spawnSync(cmd, [...pre, ...args], { cwd: options.cwd, timeout: options.timeout, encoding: 'utf8', stdio: options.inherit ? 'inherit' : 'pipe' })
+  const linked = checkablePath(args, options.cwd)
+  const r = spawnSync(cmd, [...pre, ...linked.args], { cwd: options.cwd, timeout: options.timeout, encoding: 'utf8', stdio: options.inherit ? 'inherit' : 'pipe' })
+  linked.done()
   const stdout = r.stdout ?? ''
   const stderr = r.stderr ?? ''
   return { ok: r.status === 0, status: r.status, stdout, stderr, out: `${stdout}${stderr}`.trim() }
@@ -70,7 +92,12 @@ export function runShopifyJson<T>(args: string[], options: { cwd: string; timeou
 export async function runShopifyJsonAsync<T>(args: string[], options: { cwd: string; timeout?: number }): Promise<JsonOutcome<T>> {
   const command = shopifyCommand()
   if (!command) return { kind: 'error', error: { type: 'abort', message: NOT_INSTALLED }, verifyUrl: null }
-  return parseJsonOutcome<T>(await exec([...command, ...args, '--json'], options))
+  const linked = checkablePath(args, options.cwd)
+  try {
+    return parseJsonOutcome<T>(await exec([...command, ...linked.args, '--json'], options))
+  } finally {
+    linked.done()
+  }
 }
 
 function parseJsonOutcome<T>(r: { ok: boolean; stdout: string; stderr: string; out: string }): JsonOutcome<T> {

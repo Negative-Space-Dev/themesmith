@@ -43,7 +43,13 @@ function isAcceptableArbitrary(token: string): boolean {
   return ACCEPTABLE_ARBITRARY.some((pattern) => pattern.test(token));
 }
 
+// The utility without its variants: `w-[347px]` for `md:hover:w-[347px]`.
+function utility(token: string): string {
+  return token.replace(/^(?:[\w-]+:|\[[^\]]*\]:|@[\w-]*:)+/, "");
+}
+
 function isArbitraryUtility(token: string): boolean {
+  token = utility(token);
   if (!ARBITRARY_UTILITY.test(token)) {
     return false;
   }
@@ -52,11 +58,11 @@ function isArbitraryUtility(token: string): boolean {
 }
 
 function isArbitraryColorUtility(token: string): boolean {
-  if (!isArbitraryUtility(token) || !COLOR_UTILITY_PREFIX.test(token)) {
+  if (!isArbitraryUtility(token) || !COLOR_UTILITY_PREFIX.test(utility(token))) {
     return false;
   }
 
-  const value = getArbitraryValue(token);
+  const value = getArbitraryValue(utility(token));
   if (!value) {
     return false;
   }

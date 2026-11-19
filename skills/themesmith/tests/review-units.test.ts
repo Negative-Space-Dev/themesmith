@@ -107,3 +107,27 @@ test('after a review round, lists only the units changed since, still with the w
   expect(next.units.map((u) => [u.name, u.changedLines['sections/hero.liquid']])).toEqual([['hero', [[1, 1], [5, 5]]]])
   expect(next).toMatchObject({ alreadyReviewed: ['footer-links'] })
 })
+
+test('finds the base branch of a repository whose default branch is master, with no origin/HEAD', () => {
+  git('branch', '-m', 'main', 'master')
+  write('snippets/footer-links.liquid', '<a>2</a>\n')
+  git('add', '-A')
+  git('commit', '-qm', 'saved work')
+  const r = spawnSync('bun', [join(SKILL_DIR, 'scripts/review-units.ts')], { cwd: repo, encoding: 'utf8' })
+  expect(JSON.parse(r.stdout).units.map((u: { name: string }) => u.name)).toEqual(['footer-links'])
+})
+
+test('says so, instead of listing nothing, when it cannot find where the work started', () => {
+  git('branch', '-m', 'main', 'trunk')
+  const r = spawnSync('bun', [join(SKILL_DIR, 'scripts/review-units.ts')], { cwd: repo, encoding: 'utf8' })
+  expect(r.status).toBe(1)
+  expect(JSON.parse(r.stdout).ok).toBe(false)
+})
+
+test('an edit made while the review ran is not marked reviewed when the round finishes', () => {
+  write('snippets/footer-links.liquid', '<a>2</a>\n')
+  expect(units().units.map((u) => u.name)).toEqual(['footer-links'])
+  write('snippets/footer-links.liquid', '<a>3</a>\n')
+  spawnSync('bun', [join(SKILL_DIR, 'scripts/review-units.ts'), '--base', 'main', '--done'], { cwd: repo, encoding: 'utf8' })
+  expect(units().units.map((u) => u.name)).toEqual(['footer-links'])
+})

@@ -13,8 +13,8 @@ sections, components, or breakpoints, add it to the theme config. That keeps
 utilities semantic, searchable, and aligned with the design system.
 
 This is the intermediate step between default scale utilities and arbitrary
-values. **Always read the project's existing `tailwind.config` first** — many
-tokens may already exist.
+values. **Always read the project's existing theme first** (`tailwind.config` for
+Tailwind v3, the `@theme` block in the main CSS file for Tailwind v4) — many tokens may already exist.
 
 ## Preferred config patterns
 
@@ -123,7 +123,8 @@ Manual review when:
 - a color, radius, font size, or breakpoint is part of the brand system but
   missing from config
 
-Inspect `tailwind.config.js` / `tailwind.config.ts` alongside the changed markup.
+Inspect `tailwind.config.js` / `tailwind.config.ts` (Tailwind v3) or the `@theme` block in the main CSS file for Tailwind v4
+alongside the changed markup.
 
 ## How to fix
 

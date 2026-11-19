@@ -5,11 +5,13 @@
 // Units already reviewed, with no file changed since, are left out (listed in `alreadyReviewed`), so each round
 // reviews only what is new. `changedLines` still covers the whole piece of work.
 // Usage: bun review-units.ts [--base <ref>] [--all]   list the units to review (--all: include reviewed ones)
-//        bun review-units.ts --done                    record that every unit, as it is now, has been reviewed
+//        bun review-units.ts --done                    record that the units last listed have been reviewed, as they
+//                                                      were when listed
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
+import { defaultBranch } from './lib/git.ts'
 import { builderOf } from './lib/builders.ts'
 import { findRoot, globMatch, loadProfile } from './lib/profile.ts'
 import { differing, readIgnores, snapshot, type Snapshot } from './lib/snapshot.ts'
@@ -23,14 +25,15 @@ type Skipped = { file: string; reason: string }
 const REVIEWABLE = /\.(liquid|html?|js|mjs|cjs|ts|tsx|css)$/i
 
 function git(...args: string[]): string {
-  return spawnSync('git', args, { cwd: root, encoding: 'utf8' }).stdout ?? ''
+  return spawnSync('git', ['-c', 'core.quotepath=false', ...args], { cwd: root, encoding: 'utf8' }).stdout ?? ''
 }
 
 function baseRef(): string {
   const flag = process.argv.indexOf('--base')
   if (flag !== -1 && process.argv[flag + 1]) return process.argv[flag + 1]
-  const head = git('symbolic-ref', '--short', 'refs/remotes/origin/HEAD').trim()
-  return head || 'origin/main'
+  const branch = defaultBranch(root) ?? 'main'
+  // A repository not pushed to GitHub yet has only the local branch.
+  return git('rev-parse', '--verify', '--quiet', `origin/${branch}`).trim() ? `origin/${branch}` : branch
 }
 
 function changedSinceStart(): string[] {
@@ -86,7 +89,12 @@ const root = findRoot()
 const profile = loadProfile(root)
 const cli = profile.mode === 'cli'
 const base = cli ? 'theme.ts start' : baseRef()
-const mergeBase = cli ? '' : git('merge-base', 'HEAD', base).trim() || 'HEAD'
+const mergeBase = cli ? '' : git('merge-base', 'HEAD', base).trim()
+// Without a merge base every change would look already saved, and the review would silently cover nothing.
+if (!cli && !mergeBase) {
+  console.log(JSON.stringify({ ok: false, error: `Can't tell where this work started: "${base}" has no history in common with this branch. Pass --base <branch> with the branch this work started from.` }))
+  process.exit(1)
+}
 const lines = (file: string) => (cli ? wholeFile(file) : changedLines(mergeBase, file))
 const skipped: Skipped[] = []
 const reviewable: string[] = []
@@ -129,14 +137,21 @@ const reviewedPath = join(root, '.themesmith', 'reviewed.json')
 const hash = (file: string) => createHash('sha256').update(readFileSync(join(root, file))).digest('hex')
 const reviewed: Record<string, string> = existsSync(reviewedPath) ? JSON.parse(readFileSync(reviewedPath, 'utf8')) : {}
 
+// What each listed file held when it was handed to the review. `--done` records these, not the files as they are
+// then: edits made while the review ran weren't part of it, so the next round still lists them.
+const listedPath = join(root, '.themesmith', 'review-listed.json')
+
 if (process.argv.includes('--done')) {
-  const now = { ...reviewed, ...Object.fromEntries(units.flatMap((u) => u.files).map((f) => [f, hash(f)])) }
+  const listed: Record<string, string> = existsSync(listedPath) ? JSON.parse(readFileSync(listedPath, 'utf8')) : Object.fromEntries(units.flatMap((u) => u.files).map((f) => [f, hash(f)]))
   mkdirSync(dirname(reviewedPath), { recursive: true })
-  writeFileSync(reviewedPath, `${JSON.stringify(now, null, 2)}\n`)
-  console.log(JSON.stringify({ ok: true, reviewed: units.map((u) => u.name) }))
+  writeFileSync(reviewedPath, `${JSON.stringify({ ...reviewed, ...listed }, null, 2)}\n`)
+  rmSync(listedPath, { force: true })
+  console.log(JSON.stringify({ ok: true, reviewed: units.filter((u) => u.files.some((f) => f in listed)).map((u) => u.name) }))
   process.exit(0)
 }
 
 const isReviewed = (u: Omit<Unit, 'changedLines'>) => !process.argv.includes('--all') && u.files.every((f) => reviewed[f] === hash(f))
 const toReview = units.filter((u) => !isReviewed(u)).map((u) => ({ ...u, changedLines: Object.fromEntries(u.files.map((f) => [f, lines(f)])) }))
+mkdirSync(dirname(listedPath), { recursive: true })
+writeFileSync(listedPath, `${JSON.stringify(Object.fromEntries(toReview.flatMap((u) => u.files).map((f) => [f, hash(f)])), null, 2)}\n`)
 console.log(JSON.stringify({ base, units: toReview, alreadyReviewed: units.filter(isReviewed).map((u) => u.name), skipped }, null, 2))

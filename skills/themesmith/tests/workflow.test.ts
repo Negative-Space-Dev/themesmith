@@ -264,3 +264,85 @@ test('start.ts --update works on a branch started before the theme was set up', 
   git(repo, 'merge', '--abort')
   expect(script('start.ts', '--continue').code).not.toBe(0)
 })
+
+test('theme-check.ts fails only on errors the change added, listing the ones the file already had', () => {
+  profile()
+  write('sections/legacy.liquid', "<h1>Old</h1>\n{% render 'gone-snippet' %}\n")
+  commit('legacy theme')
+  git(repo, 'checkout', '-qb', 'work')
+
+  write('sections/legacy.liquid', "<h1>New heading</h1>\n<p>More</p>\n{% render 'gone-snippet' %}\n")
+  const touched = script('theme-check.ts', 'sections/legacy.liquid')
+  expect(touched.code).toBe(0)
+  expect(touched.stdout).toContain('earlier sections/legacy.liquid:3')
+  expect(touched.stdout).toContain('0 errors, 0 warnings. 1 more error was already in these files before this work')
+
+  write('sections/legacy.liquid', "<h1>New heading</h1>\n{% render 'new-missing' %}\n{% render 'gone-snippet' %}\n")
+  const added = script('theme-check.ts', 'sections/legacy.liquid')
+  expect(added.code).toBe(1)
+  expect(added.stdout).toContain("error   sections/legacy.liquid:2  'snippets/new-missing.liquid' does not exist (MissingTemplate)")
+})
+
+test('suggests a Tailwind CLI build, marks what it writes as built, and leaves out scripts that run the Shopify CLI', async () => {
+  write(
+    'package.json',
+    JSON.stringify({
+      scripts: {
+        build: 'tailwindcss -i src/app.css -o ./assets/app.css --minify',
+        dev: 'tailwindcss -i src/app.css -o assets/app.css --watch',
+        start: 'shopify theme dev',
+        package: 'shopify theme package',
+      },
+    })
+  )
+  write('package-lock.json', '{}')
+  commit('init')
+  expect(await suggestProfile(repo)).toMatchObject({
+    dev: [
+      { cwd: '.', run: 'bun {skill}/scripts/shopify.ts theme dev --store {store}' },
+      { cwd: '.', run: 'npm run dev' },
+    ],
+    build: [{ cwd: '.', run: 'npm run build' }],
+    generated: ['assets/app.css'],
+  })
+})
+
+test('does not start a second preview from a dev script that runs `shopify theme dev` through other scripts', async () => {
+  write('package.json', JSON.stringify({ scripts: { dev: 'run-p dev:*', 'dev:theme': 'shopify theme dev', 'dev:css': 'tailwindcss -o assets/app.css --watch' } }))
+  commit('init')
+  expect((await suggestProfile(repo)).dev).toEqual([{ cwd: '.', run: 'bun {skill}/scripts/shopify.ts theme dev --store {store}' }])
+})
+
+test('theme-check.ts --all checks a theme in a dot-folder through a link, and reports its files by theme path', () => {
+  const hidden = join(dir, '.worktrees', 'theme')
+  mkdirSync(hidden, { recursive: true })
+  repo = hidden
+  profile()
+  write('sections/hero.liquid', '<h1>Hi</h1>\n')
+  installShopify(`const a = process.argv.slice(2)
+const path = a[a.indexOf('--path') + 1]
+require('fs').writeFileSync(${JSON.stringify(join(dir, 'check-path'))}, path)
+console.log(JSON.stringify({ issues: [{ filePath: path + '/sections/hero.liquid', check: 'MissingTemplate', severity: 'error', startRow: 2, message: 'broken' }] }))
+`)
+  const r = script('theme-check.ts', '--all')
+  expect(readFileSync(join(dir, 'check-path'), 'utf8')).not.toContain('/.worktrees/')
+  expect(r.stdout).toContain('error   sections/hero.liquid:2  broken (MissingTemplate)')
+})
+
+test('a GitHub remote behind an SSH host alias counts as GitHub', async () => {
+  // ssh -G, as it answers with `Host github-work` / `HostName github.com` in ~/.ssh/config.
+  mkdirSync(join(dir, 'bin'), { recursive: true })
+  writeFileSync(join(dir, 'bin/ssh'), `#!/bin/sh\n[ "$2" = github-work ] && echo "hostname github.com" || echo "hostname $2"\n`)
+  chmodSync(join(dir, 'bin/ssh'), 0o755)
+  git(repo, 'remote', 'add', 'origin', 'git@github-work:acme/theme.git')
+  commit('init')
+  const path = process.env.PATH
+  process.env.PATH = `${join(dir, 'bin')}:${path}`
+  try {
+    expect((await suggestProfile(repo)).mode).toBe('github')
+    git(repo, 'remote', 'set-url', 'origin', 'git@gitlab.com:acme/theme.git')
+    expect((await suggestProfile(repo)).mode).toBe('cli')
+  } finally {
+    process.env.PATH = path
+  }
+})
