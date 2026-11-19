@@ -170,3 +170,14 @@ test('--fix loads the Liquid plugin in the format command when the theme\'s Pret
   expect(saved.format[0].run).toContain('--plugin @shopify/prettier-plugin-liquid')
   expect(doctor().theme.find((i: { name: string }) => i.name === 'profile commands')).toMatchObject({ status: 'ok' })
 })
+
+test('a GitHub CLI the person turned down is remembered and not needed to be ready', () => {
+  installShopify('5.0.1')
+  profile({ mode: 'github' })
+  const path = join(theme, '.themesmith/skipped-tools.json')
+  doctor(['--fix', '--skip', 'gh'])
+  expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual(['gh'])
+  const r: Report = doctor()
+  expect(r.tools.map((t) => t.name)).not.toContain('gh')
+  expect(r.accounts.map((i) => i.name)).not.toContain('github sign-in')
+})

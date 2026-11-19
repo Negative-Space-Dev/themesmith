@@ -38,7 +38,7 @@ That is the only question. Don't ask about branches or anything else the doctor 
 bun <skill>/scripts/doctor.ts --fix [--store <x>.myshopify.com] [--skip <tool,...>]
 ```
 
-Pass only what the person changed or added in step 2; everything else comes from the confirmed settings. `--skip` takes tool names from the chart's `tools` list (`gh`, `npm`, and so on) for installs they declined. Before running it, say one line: "Setting up now. This takes a minute or two."
+Pass only what the person changed or added in step 2; everything else comes from the confirmed settings. `--skip` takes tool names from the chart's `tools` list (`gh`, `npm`, and so on) for installs they declined. Turning down the GitHub CLI (`gh`) is remembered for this theme: setup finishes without it, and you give the person a link to open each pull request on GitHub themselves. The other tools are needed. Before running it, say one line: "Setting up now. This takes a minute or two."
 
 It installs and updates the tools in parallel, saves the profile, and sets up the theme's formatting and checking tools and its `AGENTS.md` rules. The rules tell any agent that opens the theme without the skill how to install it on that computer. Then, in the background, it starts the sign-ins and a full Theme Check of the theme. When it finishes, send one message:
 

@@ -13,7 +13,7 @@
 //   bun doctor.ts --skip-update   stops offering the newest version
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { suggestProfile, type SuggestedProfile } from './lib/detect.ts'
 import { exec, isRunning, startDetached } from './lib/exec.ts'
 import { findRoot, loadProfile, parseProfile, PROFILE_PATH, ProfileError, type Profile } from './lib/profile.ts'
@@ -53,8 +53,21 @@ async function githubTheme(profile: Profile | null): Promise<boolean> {
   return profile ? profile.mode === 'github' : (await exec(['git', 'remote', 'get-url', 'origin'], { cwd: root })).out.includes('github.com')
 }
 
+// Tools the person can turn down at setup (`--skip`): without the GitHub CLI, they open pull requests on GitHub
+// themselves. Turned-down tools are remembered for this theme and no longer needed for it to be ready.
+const OPTIONAL_TOOLS: ToolName[] = ['gh']
+const skippedPath = join(root, '.themesmith', 'skipped-tools.json')
+function skippedTools(): ToolName[] {
+  try {
+    return JSON.parse(readFileSync(skippedPath, 'utf8')) as ToolName[]
+  } catch {
+    return []
+  }
+}
+
 // Git and the GitHub CLI only matter in GitHub mode.
-const neededTools = (github: boolean): ToolName[] => ['bun', ...(github ? (['git', 'gh'] as const) : []), 'npm', 'shopify', 'theme-check']
+const neededTools = (github: boolean): ToolName[] =>
+  (['bun', ...(github ? (['git', 'gh'] as const) : []), 'npm', 'shopify', 'theme-check'] as ToolName[]).filter((t) => !skippedTools().includes(t))
 
 const LIQUID_PLUGIN = '@shopify/prettier-plugin-liquid'
 
@@ -115,7 +128,7 @@ async function accountItems(profile: Profile | null, github: boolean): Promise<I
     github ? exec(['git', 'config', 'user.name'], { cwd: root }) : null,
     github ? exec(['git', 'config', 'user.email'], { cwd: root }) : null,
     github ? exec(['git', 'remote', 'get-url', 'origin'], { cwd: root }) : null,
-    github ? exec(['gh', 'auth', 'status'], { timeout: 30_000 }) : null,
+    github && !skippedTools().includes('gh') ? exec(['gh', 'auth', 'status'], { timeout: 30_000 }) : null,
     profile ? runShopifyJsonAsync(['theme', 'list', '--store', profile.store, '--no-input'], { cwd: root, timeout: 60_000 }) : null,
   ])
   const items: Item[] = []
@@ -123,7 +136,7 @@ async function accountItems(profile: Profile | null, github: boolean): Promise<I
     items.push(name!.ok ? ok('git name', 'Your name on saved work', name!.stdout.trim(), 'you') : missing('git name', 'Your name on saved work', 'you'))
     items.push(email!.ok ? ok('git email', 'Your email on saved work', email!.stdout.trim(), 'you') : missing('git email', 'Your email on saved work', 'you'))
     items.push(remote!.ok && remote!.stdout.includes('github.com') ? ok('github remote', 'GitHub repository', remote!.stdout.trim(), 'you') : missing('github remote', 'GitHub repository', 'you', remote!.ok ? `origin is ${remote!.stdout.trim()}` : 'no origin remote'))
-    items.push(gh!.ok ? ok('github sign-in', 'GitHub sign-in', undefined, 'sign in') : missing('github sign-in', 'GitHub sign-in', 'sign in'))
+    if (gh) items.push(gh.ok ? ok('github sign-in', 'GitHub sign-in', undefined, 'sign in') : missing('github sign-in', 'GitHub sign-in', 'sign in'))
   }
   if (shopify) {
     items.push(
@@ -230,6 +243,11 @@ async function setOriginHead() {
 
 async function fix() {
   const skip = new Set((arg('--skip') ?? '').split(',').filter(Boolean))
+  const remembered = [...skip].filter((t): t is ToolName => OPTIONAL_TOOLS.includes(t as ToolName))
+  if (remembered.length > 0) {
+    mkdirSync(dirname(skippedPath), { recursive: true })
+    writeFileSync(skippedPath, `${JSON.stringify([...new Set([...skippedTools(), ...remembered])])}\n`)
+  }
   const before = await inspect()
   if (before.tooling instanceof Error) return { ok: false, message: before.tooling.message }
   const tooling0 = before.tooling
