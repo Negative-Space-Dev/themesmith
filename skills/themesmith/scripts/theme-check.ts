@@ -50,12 +50,19 @@ async function checkFiles(paths: string[], baseline?: string): Promise<Offense[]
   return JSON.parse(r.stdout) as Offense[]
 }
 
+// A file the CLI reports, relative to the theme. A theme under a dot-folder is checked through a link (see
+// checkablePath in lib/shopify.ts), so its files come back under the link's folder instead.
+function themePath(reported: string): string {
+  const rel = relative(root, reported).replace(/\\/g, '/')
+  return rel.startsWith('..') ? reported.replace(/\\/g, '/').replace(/^.*?\/themesmith-check-[^/]+\/theme\//, '') : rel
+}
+
 async function checkAll(): Promise<Offense[]> {
   const r = runShopifyJson<{ issues: CliIssue[] }>(['theme', 'check', '--path', root, '--fail-level', 'error'], { cwd: root })
   if (r.kind === 'error') throw new Error(`Theme Check could not run: ${r.error.message}`)
   return r.result.issues.map((i) => ({
     check: i.check,
-    file: relative(root, i.filePath).replace(/\\/g, '/'),
+    file: themePath(i.filePath),
     line: i.startRow ?? 1,
     column: i.startColumn ?? 1,
     severity: i.severity === 'error' ? 'error' : i.severity === 'warning' ? 'warning' : 'info',

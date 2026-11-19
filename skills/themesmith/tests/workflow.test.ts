@@ -312,3 +312,19 @@ test('does not start a second preview from a dev script that runs `shopify theme
   commit('init')
   expect((await suggestProfile(repo)).dev).toEqual([{ cwd: '.', run: 'bun {skill}/scripts/shopify.ts theme dev --store {store}' }])
 })
+
+test('theme-check.ts --all checks a theme in a dot-folder through a link, and reports its files by theme path', () => {
+  const hidden = join(dir, '.worktrees', 'theme')
+  mkdirSync(hidden, { recursive: true })
+  repo = hidden
+  profile()
+  write('sections/hero.liquid', '<h1>Hi</h1>\n')
+  installShopify(`const a = process.argv.slice(2)
+const path = a[a.indexOf('--path') + 1]
+require('fs').writeFileSync(${JSON.stringify(join(dir, 'check-path'))}, path)
+console.log(JSON.stringify({ issues: [{ filePath: path + '/sections/hero.liquid', check: 'MissingTemplate', severity: 'error', startRow: 2, message: 'broken' }] }))
+`)
+  const r = script('theme-check.ts', '--all')
+  expect(readFileSync(join(dir, 'check-path'), 'utf8')).not.toContain('/.worktrees/')
+  expect(r.stdout).toContain('error   sections/hero.liquid:2  broken (MissingTemplate)')
+})
