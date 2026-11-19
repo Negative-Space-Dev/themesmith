@@ -123,3 +123,11 @@ test('says so, instead of listing nothing, when it cannot find where the work st
   expect(r.status).toBe(1)
   expect(JSON.parse(r.stdout).ok).toBe(false)
 })
+
+test('an edit made while the review ran is not marked reviewed when the round finishes', () => {
+  write('snippets/footer-links.liquid', '<a>2</a>\n')
+  expect(units().units.map((u) => u.name)).toEqual(['footer-links'])
+  write('snippets/footer-links.liquid', '<a>3</a>\n')
+  spawnSync('bun', [join(SKILL_DIR, 'scripts/review-units.ts'), '--base', 'main', '--done'], { cwd: repo, encoding: 'utf8' })
+  expect(units().units.map((u) => u.name)).toEqual(['footer-links'])
+})
