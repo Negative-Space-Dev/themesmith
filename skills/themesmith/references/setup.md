@@ -19,7 +19,7 @@ After a yes, install it, then say `✅ Bun <version> installed`:
 bun <skill>/scripts/doctor.ts
 ```
 
-It checks everything at the same time, in about a second, and changes nothing. Send one message, then wait for the answer:
+It checks everything at the same time, in a few seconds, and changes nothing. Send one message, then wait for the answer:
 
 > This theme needs a quick one-time setup before I [their request in a few words]. Here's what I found:
 >
@@ -64,7 +64,7 @@ It waits for the sign-ins and the full Theme Check, then checks everything again
 
 > ✅ Setup is done. [themeCheck.summary in plain words, e.g. "Shopify's checker found no problems in your theme."] Now [their request in a few words].
 
-If the full Theme Check found errors, say how many in one line. They were already in the theme before this work, and they don't block it. If anything else is still ✗, fix it with step 3 and run `--wait` again.
+If the full Theme Check found errors, say how many in one line. They were already in the theme before this work, and they don't block it. If anything else is still ✗, fix it with step 3 and run `--wait` again. If **Theme files at the top of this folder** is ✗, the theme lives in a subfolder (its `detail` names it): tell the person themesmith can't work on a theme set up that way yet, and stop.
 
 Then start the request with its workflow. In GitHub mode, `start.ts` commits the setup files as the first commit of that work.
 

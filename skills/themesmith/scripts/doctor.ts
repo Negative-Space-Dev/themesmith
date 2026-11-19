@@ -38,6 +38,34 @@ const root = await (async () => {
 const jobs = join(root, '.themesmith', 'jobs')
 const themeCheckJob = join(jobs, 'theme-check.json')
 
+type ThemeCheckJob = { done: boolean; pid?: number; summary?: string; errors?: unknown[] }
+// The background full Theme Check's record. Unreadable (its process was killed while writing) counts as none.
+function readThemeCheckJob(): ThemeCheckJob | null {
+  try {
+    return JSON.parse(readFileSync(themeCheckJob, 'utf8')) as ThemeCheckJob
+  } catch {
+    return null
+  }
+}
+
+// Where the theme's files are, when not at the top of this folder: `shopify.theme.toml`'s path, or a folder one or
+// two levels down holding layout/theme.liquid. Themesmith's scripts work on themes whose files are at the top.
+function themeSubfolder(): string | null {
+  const toml = join(root, 'shopify.theme.toml')
+  const path = existsSync(toml) ? readFileSync(toml, 'utf8').match(/^\s*path\s*=\s*["']([^"']*)["']/m)?.[1] : undefined
+  if (path && !['', '.', './'].includes(path.trim())) return path.trim().replace(/^\.\//, '')
+  if (existsSync(join(root, 'layout', 'theme.liquid'))) return null
+  const dirs = (dir: string) => {
+    try {
+      return readdirSync(join(root, dir), { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules').map((e) => (dir ? `${dir}/${e.name}` : e.name))
+    } catch {
+      return []
+    }
+  }
+  const candidates = dirs('').flatMap((d) => [d, ...dirs(d)])
+  return candidates.find((d) => existsSync(join(root, d, 'layout', 'theme.liquid'))) ?? null
+}
+
 function readProfile(): Profile | null {
   try {
     return loadProfile(root)
@@ -113,7 +141,11 @@ async function setupTools(apply = false): Promise<Tooling> {
 function themeItems(profile: Profile | null, t: Tooling | Error): Item[] {
   if (t instanceof Error) return [missing('theme tools', 'Theme tools', 'setup', t.message)]
   const problems = profile ? commandFixes(profile, t.liquidReady).problems : []
+  const subfolder = themeSubfolder()
   return [
+    ...(subfolder
+      ? [missing('theme folder', 'Theme files at the top of this folder', 'you', `the theme's files are in ${subfolder}/; themesmith works on a theme whose layout/, sections/ and other folders are at the top of the repository`)]
+      : []),
     profile ? ok('profile', 'Themesmith settings', `${profile.store}, ${profile.mode === 'github' ? 'GitHub' : 'CLI'} mode`) : missing('profile', 'Themesmith settings', 'setup'),
     ...(profile ? [problems.length ? missing('profile commands', 'Preview and check commands', 'setup', problems.join('; ')) : ok('profile commands', 'Preview and check commands')] : []),
     t.missingPackages.length === 0 && t.installed && t.prettierConfig ? ok('prettier', 'Code formatter (Prettier)') : missing('prettier', 'Code formatter (Prettier)', 'setup'),
@@ -339,7 +371,9 @@ async function fix() {
   // In the background: the full Theme Check (once per theme) and the sign-ins, which wait for the person.
   const shopifyReady = before.tools.find((t) => t.name === 'shopify')?.state === 'ok' || installed.find((i) => i.name === 'shopify')?.ok
   const background: string[] = []
-  if (shopifyReady && !existsSync(themeCheckJob)) {
+  const job = readThemeCheckJob()
+  // Once per theme, and again when an earlier run stopped before finishing.
+  if (shopifyReady && (!job || (!job.done && !(job.pid && isRunning(job.pid))))) {
     mkdirSync(jobs, { recursive: true })
     const pid = startDetached(['bun', join(SCRIPTS, 'theme-check.ts'), '--all', '--record'], { cwd: root, log: join(jobs, 'theme-check.log') })
     writeFileSync(themeCheckJob, `${JSON.stringify({ done: false, pid }, null, 2)}\n`)
@@ -377,15 +411,15 @@ async function wait() {
     (async () => {
       const end = Date.now() + 10 * 60_000
       while (existsSync(themeCheckJob) && Date.now() < end) {
-        const job = JSON.parse(readFileSync(themeCheckJob, 'utf8')) as { done: boolean; pid?: number }
-        if (job.done || (job.pid && !isRunning(job.pid))) return
+        const job = readThemeCheckJob()
+        if (!job || job.done || (job.pid && !isRunning(job.pid))) return
         await Bun.sleep(1000)
       }
     })()
   )
   await Promise.all(waits)
   const after = await inspect()
-  const job = existsSync(themeCheckJob) ? (JSON.parse(readFileSync(themeCheckJob, 'utf8')) as { done: boolean; summary?: string; errors?: unknown[] }) : null
+  const job = readThemeCheckJob()
   return { ready: after.ready, chart: after.chart, themeCheck: job?.done ? { summary: job.summary, errors: job.errors } : null }
 }
 

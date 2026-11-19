@@ -21,7 +21,7 @@ Write for someone who isn't technical, at a 6th to 8th grade reading level, and 
 
 ## Setup comes first
 
-At the start of every conversation, before reading, planning, or editing anything for the request, run the doctor from the theme's root folder: the one holding `.agents/themesmith.json` (the profile), or for a theme not set up yet, its Git repository or the folder the person points you to. It takes about a second and changes nothing.
+At the start of every conversation, before reading, planning, or editing anything for the request, run the doctor from the theme's root folder: the one holding `.agents/themesmith.json` (the profile), or for a theme not set up yet, its Git repository or the folder the person points you to. It takes a few seconds and changes nothing.
 
 ```bash
 bun <skill>/scripts/doctor.ts
@@ -39,7 +39,7 @@ Files made by page builder apps (Replo, GemPages, PageFly, Shogun; the list is i
 
 Run the Shopify CLI only through `bun <skill>/scripts/shopify.ts`, never as plain `shopify`: the wrapper runs it on Bun. To check your work, run `bun <skill>/scripts/theme-check.ts <files you changed>`: it checks only those files, in about a second. It fails only on errors your change added. Errors a file already had before this work are listed as `earlier`: leave them alone unless the person asks. Checking the whole theme (`--all`) takes much longer and is for setup.
 
-**The preview the person sees is always built and on the store**: the `preview` link (`https://<store>/?preview_theme_id=<id>`) that saving (GitHub mode) or pushing (CLI mode) prints. Anyone can open it. Never give them a `127.0.0.1` or `localhost` link, and never the link `shopify theme dev` prints: those serve dev-mode files that only work on this computer. To show a new template before a page uses it, add `?view=<template suffix>` to an existing page in the preview, for example `/pages/about?view=holiday-lp`.
+**The preview the person sees is always built and on the store**: the `preview` link (`https://<store>/?preview_theme_id=<id>`) that saving (GitHub mode) or pushing (CLI mode) prints. Anyone with the link can open it. On a password-protected store (every development store is one), they also need the storefront password, from **Online Store > Preferences** in Shopify admin: say so when you share the link. Never give them a `127.0.0.1` or `localhost` link, and never the link `shopify theme dev` prints: those serve dev-mode files that only work on this computer. To show a new template before a page uses it, add `?view=<template suffix>` to an existing page in the preview, for example `/pages/about?view=holiday-lp`.
 
 `bun <skill>/scripts/dev.ts` runs a live-reloading preview on this computer, for your own checks while editing; `dev.ts stop` stops it. Saving and pushing stop it, because its watchers put dev-mode files back.
 

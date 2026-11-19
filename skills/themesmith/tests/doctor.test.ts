@@ -194,3 +194,23 @@ test('protects the branch the live theme follows, found from the live theme\'s n
   expect(JSON.parse(readFileSync(join(theme, '.agents/themesmith.json'), 'utf8')).protectedBranches).toEqual(['main', 'production'])
   expect(doctor().accounts.find((i: Item) => i.name === 'live branch')).toMatchObject({ status: 'ok', detail: 'production' })
 })
+
+test('a placeholder store in the README is not taken for the theme\'s store', () => {
+  installShopify('5.0.1')
+  spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: theme })
+  spawnSync('git', ['remote', 'add', 'origin', 'git@github.com:acme/acme-audio.git'], { cwd: theme })
+  write(join(dir, 'config/shopify-cli-theme-store-password-nodejs/config.json'), JSON.stringify({ 'acme-audio': 'x' }))
+  write(join(theme, 'README.md'), 'Run `shopify theme dev --store your-store.myshopify.com`, e.g. example.myshopify.com.\n')
+  expect(doctor().confirm).toStartWith('- **Store:** acme-audio.myshopify.com\n')
+})
+
+test('says when the theme\'s files are in a subfolder, which themesmith does not work on', () => {
+  installShopify('5.0.1')
+  profile()
+  rmSync(join(theme, 'sections'), { recursive: true })
+  write(join(theme, 'theme/layout/theme.liquid'), '{{ content_for_layout }}\n')
+  const r: Report = doctor()
+  expect(r.ready).toBe(false)
+  expect(r.theme.find((i) => i.name === 'theme folder')).toMatchObject({ status: 'missing', needs: 'you' })
+  expect(r.theme.find((i) => i.name === 'theme folder')!.detail).toStartWith("the theme's files are in theme/")
+})

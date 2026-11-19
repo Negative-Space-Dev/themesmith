@@ -26,6 +26,8 @@ export type SuggestedProfile = {
 }
 
 const STORE = /\b([a-z0-9][a-z0-9-]*\.myshopify\.com)\b/
+// Store names that docs use as examples, never a real theme's store.
+const PLACEHOLDER_STORE = /^(?:example|examples|your-?store(?:-name)?|store-?name|your-?shop|shop|test|demo|sample|xxx+)$/
 
 const git = async (root: string, ...args: string[]) => {
   const r = await exec(['git', ...args], { cwd: root, timeout: 15_000 })
@@ -77,8 +79,8 @@ function storeInFiles(root: string): string | null {
   for (const file of ['README.md', 'readme.md', 'package.json', 'shopify.theme.toml', '.shopify/project.json']) {
     const path = join(root, file)
     if (existsSync(path)) {
-      const match = readFileSync(path, 'utf8').match(STORE)
-      if (match) return match[1]
+      const real = [...readFileSync(path, 'utf8').matchAll(new RegExp(STORE, 'g'))].map((m) => m[1]).find((s) => !PLACEHOLDER_STORE.test(s.replace(/\.myshopify\.com$/, '')))
+      if (real) return real
     }
   }
   return null

@@ -70,7 +70,8 @@ async function signInOnce(spec: Service, command: string[]): Promise<{ code: num
   const proc = Bun.spawn(command, {
     cwd: root,
     terminal: {
-      cols: 120,
+      // Wide enough that the CLI never wraps the sign-in link, which would cut it short.
+      cols: 500,
       rows: 40,
       data(terminal, chunk) {
         output += new TextDecoder().decode(chunk)
