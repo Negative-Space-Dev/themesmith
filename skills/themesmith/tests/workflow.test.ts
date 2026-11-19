@@ -6,7 +6,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { suggestProfile } from '../scripts/lib/detect.ts'
-import { installCommand, installFakeShopify, pathWith, removeDir } from './helpers.ts'
+import { bunCommand, installCommand, installFakeShopify, pathWith, removeDir } from './helpers.ts'
 
 const SCRIPTS = resolve(import.meta.dir, '../scripts')
 let dir: string
@@ -182,7 +182,9 @@ require('fs').writeSync(1, 'fake CLI started\\n')
 console.log('Preview your theme: http://127.0.0.1:' + port)
 console.log('Share your theme preview (https://example.myshopify.com/?preview_theme_id=123)')
 `)
-  profile({ dev: [{ cwd: '.', run: 'bun {skill}/scripts/shopify.ts theme dev --store {store}' }] })
+  // A line from the step before the Shopify CLI wrapper, so a failure shows which step loses the output.
+  const marker = bunCommand(dir, 'marker', "require('fs').writeSync(1, 'shell step ok\\n')\n")
+  profile({ dev: [{ cwd: '.', run: `${marker} && bun {skill}/scripts/shopify.ts theme dev --store {store}` }] })
 
   const run = script('dev.ts')
   const log = (i: number) => (existsSync(join(repo, `.themesmith/dev/${i}.log`)) ? readFileSync(join(repo, `.themesmith/dev/${i}.log`), 'utf8') : '(no log)')

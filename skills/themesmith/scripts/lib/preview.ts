@@ -14,6 +14,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
 import { exec } from './exec.ts'
+import { repoNameOf } from './git.ts'
 import { globMatch, type Profile } from './profile.ts'
 import { describeError, runShopifyJsonAsync } from './shopify.ts'
 import { readIgnores, THEME_DIRS } from './snapshot.ts'
@@ -53,7 +54,7 @@ export function connectedName(repo: string, branch: string): string {
 // are both "theme".
 export async function repoName(root: string): Promise<string | null> {
   const origin = (await exec(['git', 'remote', 'get-url', 'origin'], { cwd: root })).stdout.trim()
-  return origin.match(/([^/:]+?)(?:\.git)?\/?$/)?.[1] ?? null
+  return repoNameOf(origin)
 }
 
 const links = (profile: Profile, theme: Theme, kind: Preview['kind']): Preview => ({

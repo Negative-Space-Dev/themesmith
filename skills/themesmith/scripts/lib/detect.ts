@@ -3,7 +3,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, relative } from 'node:path'
-import { defaultBranch as namedDefaultBranch, onGitHub } from './git.ts'
+import { defaultBranch as namedDefaultBranch, onGitHub, repoNameOf } from './git.ts'
 import { exec } from './exec.ts'
 import { globMatch, type Command, type DevModeMarker, type Mode } from './profile.ts'
 
@@ -164,7 +164,7 @@ export async function suggestProfile(root: string): Promise<SuggestedProfile> {
   // used whose handle matches the repository (its GitHub name, or the "<name>/<branch>" Shopify's sync commits
   // use); only then the store the CLI last used, marked as a guess.
   const repoNames = [
-    ...new Set([origin.match(/([^/:]+?)(?:\.git)?\/?$/)?.[1], ...[...log.matchAll(/Update from Shopify for theme ([^/\s]+)\//g)].map((m) => m[1])].filter(Boolean).map((n) => n!.toLowerCase())),
+    ...new Set([repoNameOf(origin), ...[...log.matchAll(/Update from Shopify for theme ([^/\s]+)\//g)].map((m) => m[1])].filter(Boolean).map((n) => n!.toLowerCase())),
   ]
   const lastUsed = cliThemeStore()
   const fromFiles = storeInFiles(root)
