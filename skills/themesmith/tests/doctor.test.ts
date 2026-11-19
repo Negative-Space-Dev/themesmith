@@ -17,13 +17,13 @@ function write(file: string, content: string) {
   writeFileSync(file, content)
 }
 
-// A Shopify CLI linked like a global install: reports `version`, lists no themes, and passes Theme Check.
-function installShopify(version: string) {
+// A Shopify CLI linked like a global install: reports `version`, lists the given themes, and passes Theme Check.
+function installShopify(version: string, themes: { id: string; name: string; role: string }[] = []) {
   write(
     join(dir, 'bin/cli/run.ts'),
     `const a = process.argv.slice(2)
 if (a[0] === 'version') console.log(${JSON.stringify(`\n${version}`)})
-else if (a[1] === 'list') console.log(JSON.stringify({ themes: [] }))
+else if (a[1] === 'list') console.log(JSON.stringify({ themes: ${JSON.stringify(themes)} }))
 else if (a[1] === 'check' && a.includes('--init')) require('fs').writeFileSync(a[a.indexOf('--path') + 1] + '/.theme-check.yml', 'extends: theme-check:recommended\\n')
 else if (a[1] === 'check') console.log(JSON.stringify({ valid: true, issues: [], errorCount: 0, warningCount: 0, infoCount: 0 }))
 `
@@ -180,4 +180,17 @@ test('a GitHub CLI the person turned down is remembered and not needed to be rea
   const r: Report = doctor()
   expect(r.tools.map((t) => t.name)).not.toContain('gh')
   expect(r.accounts.map((i) => i.name)).not.toContain('github sign-in')
+})
+
+test('protects the branch the live theme follows, found from the live theme\'s name', () => {
+  installShopify('5.0.1', [{ id: '1', name: 'acme-theme/production', role: 'live' }])
+  profile({ mode: 'github', protectedBranches: ['main'] })
+  spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: theme })
+  spawnSync('git', ['remote', 'add', 'origin', 'git@github.com:acme/acme-theme.git'], { cwd: theme })
+  const before: Report = doctor()
+  expect(before.accounts.find((i) => i.name === 'live branch')).toMatchObject({ status: 'missing' })
+
+  doctor(['--fix', '--skip', 'gh'], { GIT_SSH_COMMAND: 'false' })
+  expect(JSON.parse(readFileSync(join(theme, '.agents/themesmith.json'), 'utf8')).protectedBranches).toEqual(['main', 'production'])
+  expect(doctor().accounts.find((i: Item) => i.name === 'live branch')).toMatchObject({ status: 'ok', detail: 'production' })
 })

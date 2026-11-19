@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join } from 'node:path'
 import { suggestProfile, type SuggestedProfile } from './lib/detect.ts'
 import { exec, isRunning, startDetached } from './lib/exec.ts'
-import { findRoot, loadProfile, parseProfile, PROFILE_PATH, ProfileError, type Profile } from './lib/profile.ts'
+import { findRoot, globMatch, loadProfile, parseProfile, PROFILE_PATH, ProfileError, type Profile } from './lib/profile.ts'
 import { arg } from './lib/run.ts'
 import { describeError, runShopifyJsonAsync } from './lib/shopify.ts'
 import { checkTools, installChart, installTools, platform, toolChart, type ToolName, type ToolStatus } from './lib/tools.ts'
@@ -123,7 +123,19 @@ function themeItems(profile: Profile | null, t: Tooling | Error): Item[] {
   ]
 }
 
-async function accountItems(profile: Profile | null, github: boolean): Promise<Item[]> {
+// The branch the live theme follows, when Shopify's GitHub integration connected it: the live theme is then named
+// "<repo>/<branch>", cut to 47 characters and "..." past 50 (a pattern then). Pushing to that branch publishes.
+function liveBranch(themes: { name: string; role: string }[], origin: string): string | null {
+  const repo = origin.match(/([^/:]+?)(?:\.git)?\/?$/)?.[1]?.toLowerCase()
+  const live = themes.find((t) => t.role === 'live')
+  if (!repo || !live || !live.name.toLowerCase().startsWith(`${repo}/`)) return null
+  const branch = live.name.slice(repo.length + 1)
+  return live.name.length === 50 && branch.endsWith('...') ? `${branch.slice(0, -3)}*` : branch || null
+}
+
+const protects = (profile: Profile, pattern: string) => profile.protectedBranches.some((p) => p === pattern || globMatch(p, pattern))
+
+async function accountItems(profile: Profile | null, github: boolean): Promise<{ items: Item[]; liveBranch: string | null }> {
   const [name, email, remote, gh, shopify] = await Promise.all([
     github ? exec(['git', 'config', 'user.name'], { cwd: root }) : null,
     github ? exec(['git', 'config', 'user.email'], { cwd: root }) : null,
@@ -138,12 +150,23 @@ async function accountItems(profile: Profile | null, github: boolean): Promise<I
     items.push(remote!.ok && remote!.stdout.includes('github.com') ? ok('github remote', 'GitHub repository', remote!.stdout.trim(), 'you') : missing('github remote', 'GitHub repository', 'you', remote!.ok ? `origin is ${remote!.stdout.trim()}` : 'no origin remote'))
     if (gh) items.push(gh.ok ? ok('github sign-in', 'GitHub sign-in', undefined, 'sign in') : missing('github sign-in', 'GitHub sign-in', 'sign in'))
   }
+  let live: string | null = null
   if (shopify) {
     items.push(
       shopify.kind === 'result'
         ? ok('shopify sign-in', 'Shopify sign-in', profile!.store, 'sign in')
         : missing('shopify sign-in', 'Shopify sign-in', 'sign in', shopify.verifyUrl ? `Shopify needs to confirm who you are: ${shopify.verifyUrl}` : describeError(shopify.error).split('\n')[0])
     )
+    if (github && remote?.ok && shopify.kind === 'result') {
+      live = liveBranch((shopify.result as { themes: { name: string; role: string }[] }).themes ?? [], remote.stdout.trim())
+      if (live) {
+        items.push(
+          protects(profile!, live)
+            ? ok('live branch', 'Live store branch protected', live)
+            : missing('live branch', 'Live store branch protected', 'setup', `your live theme follows "${live}", which isn't protected`)
+        )
+      }
+    }
   }
   // Shopify CLI 5 renamed the automation tokens and refuses to run when the new one is set beside an old one.
   const oldTokens = ['SHOPIFY_APP_AUTOMATION_TOKEN', 'SHOPIFY_CLI_PARTNERS_TOKEN'].filter((n) => process.env[n] !== undefined)
@@ -159,7 +182,7 @@ async function accountItems(profile: Profile | null, github: boolean): Promise<I
       )
     )
   }
-  return items
+  return { items, liveBranch: live }
 }
 
 function itemChart(title: string, items: Item[]): string {
@@ -190,7 +213,7 @@ function confirmText(s: SuggestedProfile): string {
 async function inspect() {
   const profile = readProfile()
   const github = await githubTheme(profile)
-  const [tools, tooling, accounts, suggested, newer] = await Promise.all([
+  const [tools, tooling, { items: accounts, liveBranch: live }, suggested, newer] = await Promise.all([
     checkTools(neededTools(github)),
     setupTools().catch((e: Error) => e),
     accountItems(profile, github),
@@ -200,7 +223,7 @@ async function inspect() {
   const theme = themeItems(profile, tooling)
   const ready = tools.every((t) => t.state === 'ok') && [...theme, ...accounts].every((i) => i.status === 'ok')
   const chart = [toolChart(tools), itemChart('This theme', theme), ...(accounts.length ? [itemChart('Accounts', accounts)] : [])].join('\n\n')
-  return { profile, github, tools, tooling, theme, accounts, suggested, ready, chart, newer }
+  return { profile, github, tools, tooling, theme, accounts, liveBranch: live, suggested, ready, chart, newer }
 }
 
 // The files setup may change, by content, so the setup commit includes exactly the ones it did change.
@@ -238,7 +261,7 @@ function hash(path: string): string | null {
 
 async function setOriginHead() {
   const head = await exec(['git', 'symbolic-ref', '-q', 'refs/remotes/origin/HEAD'], { cwd: root })
-  if (!head.ok) await exec(['git', 'remote', 'set-head', 'origin', '--auto'], { cwd: root, timeout: 60_000 })
+  if (!head.ok) await exec(['git', 'remote', 'set-head', 'origin', '--auto'], { cwd: root, timeout: 60_000, env: { GIT_TERMINAL_PROMPT: '0' } })
 }
 
 async function fix() {
@@ -272,6 +295,7 @@ async function fix() {
     })
   }
   profile = commandFixes(profile, tooling0.liquidReady).fixed
+  if (before.liveBranch && !protects(profile, before.liveBranch)) profile = { ...profile, protectedBranches: [...profile.protectedBranches, before.liveBranch] }
   mkdirSync(join(root, '.agents'), { recursive: true })
   writeFileSync(join(root, PROFILE_PATH), `${JSON.stringify(profile, null, 2)}\n`)
 

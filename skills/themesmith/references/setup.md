@@ -30,7 +30,7 @@ It checks everything at the same time, in about a second, and changes nothing. S
 >
 > OK to install what's missing and save these settings? Tell me if you want anything different.
 
-That is the only question. Don't ask about branches or anything else the doctor already worked out: it protects the base branch (and any branch GitHub Actions uses as a base) without asking. Leave out the settings part when the theme already has its profile, and ask about the store only when `confirm` does: it wasn't found, several stores match ("which one: …?"), or it is marked as a guess. Use your question tool if you have one, with two short options (go ahead, or change something). If they want something different, such as no GitHub CLI or a different store, note it for step 3. If they say no to everything, explain in one line what won't work, and stop.
+That is the only question. Don't ask about branches or anything else the doctor already worked out: it protects the base branch (and any branch GitHub Actions uses as a base) without asking. Once Shopify sign-in works, it also finds the branch the live theme follows, if it isn't protected yet: `--fix` protects it. Leave out the settings part when the theme already has its profile, and ask about the store only when `confirm` does: it wasn't found, several stores match ("which one: …?"), or it is marked as a guess. Use your question tool if you have one, with two short options (go ahead, or change something). If they want something different, such as no GitHub CLI or a different store, note it for step 3. If they say no to everything, explain in one line what won't work, and stop.
 
 ## 3. Set everything up at once
 
