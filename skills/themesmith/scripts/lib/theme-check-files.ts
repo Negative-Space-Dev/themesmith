@@ -6,16 +6,21 @@
 // theme-check.ts starts this file with `bun --tsconfig-override=tsconfig.isolated.json`: the published
 // packages include their build tsconfig.json, whose `paths` would send Bun to their TypeScript sources.
 //
-//   bun --tsconfig-override=<this folder>/tsconfig.isolated.json theme-check-files.ts <theme root> <file>...
+//   bun --tsconfig-override=<this folder>/tsconfig.isolated.json theme-check-files.ts <theme root> [--baseline <dir>] <file>...
+// With --baseline, each checked file's text is read from <dir>/<file> instead (an earlier version of it), while
+// everything it refers to is still read from the theme: what the file's earlier version got reported.
 // Prints a JSON array of offenses: { check, file, line, column, severity: 'error' | 'warning' | 'info', message }.
 import { isLiquidHtmlNode } from '@shopify/liquid-html-parser'
-import { check, filePathSupportsLiquidDoc, extractDocDefinition, JSONValidator, toSchema } from '@shopify/theme-check-common'
+import { check, filePathSupportsLiquidDoc, extractDocDefinition, JSONValidator, toSchema, toSourceCode as parseSource } from '@shopify/theme-check-common'
 import { ThemeLiquidDocsManager } from '@shopify/theme-check-docs-updater'
 import { loadConfig, NodeFileSystem, toSourceCode } from '@shopify/theme-check-node'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
-const [rootArg, ...files] = process.argv.slice(2)
+const [rootArg, ...rest] = process.argv.slice(2)
+const baselineFlag = rest.indexOf('--baseline')
+const baseline = baselineFlag === -1 ? null : rest[baselineFlag + 1]
+const files = baselineFlag === -1 ? rest : rest.filter((_, i) => i !== baselineFlag && i !== baselineFlag + 1)
 const root = resolve(rootArg)
 const configPath = join(root, '.theme-check.yml')
 // The config path is always passed: under Bun, the library's own lookup returns the wrong type.
@@ -33,7 +38,13 @@ const schemaIn = (dir: string) => async (name: string) => {
   return file ? toSchema(config.context, file.uri, file, isValidSchema) : undefined
 }
 
-const theme = (await Promise.all(files.map(source))).filter((f) => f !== undefined)
+async function checked(relativePath: string) {
+  const current = await source(relativePath)
+  if (!baseline || !current) return current
+  return parseSource(current.uri, readFileSync(join(baseline, relativePath), 'utf8'))
+}
+
+const theme = (await Promise.all(files.map(checked))).filter((f) => f !== undefined)
 const offenses = await check(theme, config, {
   fs: NodeFileSystem,
   themeDocset: docs,

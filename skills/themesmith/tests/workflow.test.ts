@@ -264,3 +264,21 @@ test('start.ts --update works on a branch started before the theme was set up', 
   git(repo, 'merge', '--abort')
   expect(script('start.ts', '--continue').code).not.toBe(0)
 })
+
+test('theme-check.ts fails only on errors the change added, listing the ones the file already had', () => {
+  profile()
+  write('sections/legacy.liquid', "<h1>Old</h1>\n{% render 'gone-snippet' %}\n")
+  commit('legacy theme')
+  git(repo, 'checkout', '-qb', 'work')
+
+  write('sections/legacy.liquid', "<h1>New heading</h1>\n<p>More</p>\n{% render 'gone-snippet' %}\n")
+  const touched = script('theme-check.ts', 'sections/legacy.liquid')
+  expect(touched.code).toBe(0)
+  expect(touched.stdout).toContain('earlier sections/legacy.liquid:3')
+  expect(touched.stdout).toContain('0 errors, 0 warnings. 1 more error was already in these files before this work')
+
+  write('sections/legacy.liquid', "<h1>New heading</h1>\n{% render 'new-missing' %}\n{% render 'gone-snippet' %}\n")
+  const added = script('theme-check.ts', 'sections/legacy.liquid')
+  expect(added.code).toBe(1)
+  expect(added.stdout).toContain("error   sections/legacy.liquid:2  'snippets/new-missing.liquid' does not exist (MissingTemplate)")
+})

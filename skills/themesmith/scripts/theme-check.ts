@@ -3,9 +3,14 @@
 //   bun {skill}/scripts/theme-check.ts --all        check the whole theme with the Shopify CLI (slower)
 //   bun {skill}/scripts/theme-check.ts --all --record   ...and save the result in .themesmith/jobs/theme-check.json
 // Only Liquid and JSON files in the theme folders are checked, never files the build writes (`generated`).
-// Exits 1 when there are errors; warnings are listed but don't fail.
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+// Checking files, it exits 1 only on errors the change added: an error the file already had before this work
+// started (GitHub mode: where the branch left the default branch; CLI mode: the live theme at `theme.ts start`)
+// is listed but doesn't block. With --all, every error fails. Warnings are listed but never fail.
+import { spawnSync } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
+import { defaultBranch } from './lib/branch.ts'
 import { exec } from './lib/exec.ts'
 import { findRoot, globMatch, loadProfile } from './lib/profile.ts'
 import { SKILL_DIR } from './lib/run.ts'
@@ -37,9 +42,10 @@ const files = [
 
 const libraryReady = existsSync(join(SKILL_DIR, 'node_modules', THEME_CHECK_PACKAGE, 'package.json'))
 
-async function checkFiles(): Promise<Offense[]> {
+async function checkFiles(paths: string[], baseline?: string): Promise<Offense[]> {
+  if (paths.length === 0) return []
   const lib = join(SKILL_DIR, 'scripts', 'lib')
-  const r = await exec(['bun', `--tsconfig-override=${join(lib, 'tsconfig.isolated.json')}`, join(lib, 'theme-check-files.ts'), root, ...files], { cwd: root })
+  const r = await exec(['bun', `--tsconfig-override=${join(lib, 'tsconfig.isolated.json')}`, join(lib, 'theme-check-files.ts'), root, ...(baseline ? ['--baseline', baseline] : []), ...paths], { cwd: root })
   if (!r.ok) throw new Error(`Theme Check could not run:\n${r.stderr.split('\n').slice(-15).join('\n')}`)
   return JSON.parse(r.stdout) as Offense[]
 }
@@ -63,18 +69,77 @@ if (!full && files.length === 0) {
   process.exit(0)
 }
 
+// Each file as it was before this work started, or nothing for a file this work added.
+function earlierVersions(): Map<string, string> {
+  const out = new Map<string, string>()
+  if (profile.mode === 'github') {
+    const git = (...a: string[]) => spawnSync('git', a, { cwd: root, encoding: 'utf8' })
+    const branch = defaultBranch(root) ?? 'main'
+    const base = [`origin/${branch}`, branch].map((ref) => git('merge-base', 'HEAD', ref).stdout.trim()).find(Boolean)
+    if (!base) return out
+    for (const f of files) {
+      const shown = git('show', `${base}:${f}`)
+      if (shown.status === 0) out.set(f, shown.stdout)
+    }
+    return out
+  }
+  const statePath = join(root, '.themesmith', 'state.json')
+  if (!existsSync(statePath)) return out
+  const mirror = join(root, '.themesmith', 'mirror', String((JSON.parse(readFileSync(statePath, 'utf8')) as { live: { id: string } }).live.id))
+  for (const f of files) if (existsSync(join(mirror, f))) out.set(f, readFileSync(join(mirror, f), 'utf8'))
+  return out
+}
+
+// The errors each file already had before this work: what its earlier version gets reported, by check and
+// message (lines move). Null when they can't be told apart, so every error counts as new.
+async function earlierErrors(): Promise<Map<string, number> | null> {
+  if (!libraryReady) return null
+  const earlier = earlierVersions()
+  const dir = mkdtempSync(join(tmpdir(), 'themesmith-check-'))
+  try {
+    for (const [f, text] of earlier) {
+      mkdirSync(dirname(join(dir, f)), { recursive: true })
+      writeFileSync(join(dir, f), text)
+    }
+    const counts = new Map<string, number>()
+    for (const o of await checkFiles([...earlier.keys()], dir)) {
+      if (o.severity === 'error') counts.set(errorKey(o), (counts.get(errorKey(o)) ?? 0) + 1)
+    }
+    return counts
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+const errorKey = (o: Offense) => `${o.file}\0${o.check}\0${o.message}`
+
 let offenses: Offense[]
+let earlier: Map<string, number> | null = null
 try {
-  offenses = full ? await checkAll() : await checkFiles()
+  ;[offenses, earlier] = await Promise.all([
+    // Past MAX_FILES the whole theme is checked at once, but only the given files' results count.
+    full ? checkAll().then((found) => (all ? found : found.filter((o) => files.includes(o.file)))) : checkFiles(files),
+    all ? null : earlierErrors(),
+  ])
 } catch (error) {
   console.error((error as Error).message)
   process.exit(2)
 }
 
-const errors = offenses.filter((o) => o.severity === 'error')
+const allErrors = offenses.filter((o) => o.severity === 'error')
+const existing: Offense[] = []
+const errors = allErrors.filter((o) => {
+  const left = earlier?.get(errorKey(o)) ?? 0
+  if (left === 0) return true
+  earlier!.set(errorKey(o), left - 1)
+  existing.push(o)
+  return false
+})
 const warnings = offenses.filter((o) => o.severity === 'warning')
-const scope = full ? 'the whole theme' : `${files.length} changed file${files.length === 1 ? '' : 's'}`
-const summary = `Theme Check, ${scope}: ${errors.length} error${errors.length === 1 ? '' : 's'}, ${warnings.length} warning${warnings.length === 1 ? '' : 's'}.`
+const scope = all ? 'the whole theme' : `${files.length} changed file${files.length === 1 ? '' : 's'}`
+const summary =
+  `Theme Check, ${scope}: ${errors.length} error${errors.length === 1 ? '' : 's'}, ${warnings.length} warning${warnings.length === 1 ? '' : 's'}.` +
+  (existing.length ? ` ${existing.length} more error${existing.length === 1 ? ' was' : 's were'} already in these files before this work, so ${existing.length === 1 ? 'it doesn\'t' : 'they don\'t'} block it.` : '')
 
 if (record) {
   const path = join(root, '.themesmith', 'jobs', 'theme-check.json')
@@ -83,5 +148,6 @@ if (record) {
 }
 
 for (const o of [...errors, ...warnings]) console.log(`${o.severity.padEnd(7)} ${o.file}:${o.line}  ${o.message} (${o.check})`)
+for (const o of existing) console.log(`earlier ${o.file}:${o.line}  ${o.message} (${o.check}, already there before this work)`)
 console.log(summary)
 process.exit(errors.length > 0 ? 1 : 0)

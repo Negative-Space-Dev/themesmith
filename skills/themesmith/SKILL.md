@@ -37,7 +37,7 @@ When the doctor is ready, read the profile. It names the store, the mode (`githu
 
 Files made by page builder apps (Replo, GemPages, PageFly, Shogun; the list is in `scripts/lib/builders.ts`) are changed in that app, not by hand: the app overwrites them. If a request needs one changed, tell the person what to change in the app.
 
-Run the Shopify CLI only through `bun <skill>/scripts/shopify.ts`, never as plain `shopify`: the wrapper runs it on Bun. To check your work, run `bun <skill>/scripts/theme-check.ts <files you changed>`: it checks only those files, in about a second. Checking the whole theme (`--all`) takes much longer and is for setup.
+Run the Shopify CLI only through `bun <skill>/scripts/shopify.ts`, never as plain `shopify`: the wrapper runs it on Bun. To check your work, run `bun <skill>/scripts/theme-check.ts <files you changed>`: it checks only those files, in about a second. It fails only on errors your change added. Errors a file already had before this work are listed as `earlier`: leave them alone unless the person asks. Checking the whole theme (`--all`) takes much longer and is for setup.
 
 **The preview the person sees is always built and on the store**: the `preview` link (`https://<store>/?preview_theme_id=<id>`) that saving (GitHub mode) or pushing (CLI mode) prints. Anyone can open it. Never give them a `127.0.0.1` or `localhost` link, and never the link `shopify theme dev` prints: those serve dev-mode files that only work on this computer. To show a new template before a page uses it, add `?view=<template suffix>` to an existing page in the preview, for example `/pages/about?view=holiday-lp`.
 
