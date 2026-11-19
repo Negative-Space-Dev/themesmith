@@ -46,18 +46,22 @@ export function sh(command: string, options: ExecOptions = {}): Promise<ExecResu
 // person). Its output goes to `log`. Returns its process ID, which is also its process group on Mac and Linux.
 export function startDetached(cmd: string[], options: { cwd: string; log: string; env?: Record<string, string | undefined> }): number {
   mkdirSync(dirname(options.log), { recursive: true })
-  const fd = openSync(options.log, 'a')
-  const proc = Bun.spawn(cmd, {
+  // On Windows a detached process never wrote to a log file handed to it, so a shell command line redirects its own
+  // output there instead: `(command) >> "log" 2>&1`, the parentheses covering every command in an `a && b` line.
+  const redirect = verbatim(cmd)
+  const fd = redirect ? null : openSync(options.log, 'a')
+  const line = redirect ? [...cmd.slice(0, -1), `"(${cmd.at(-1)!.slice(1, -1)}) >> "${options.log}" 2>&1"`] : cmd
+  const proc = Bun.spawn(line, {
     cwd: options.cwd,
     env: options.env ? { ...process.env, ...options.env } : undefined,
-    windowsVerbatimArguments: verbatim(cmd),
+    windowsVerbatimArguments: redirect,
     stdin: 'ignore',
-    stdout: fd,
-    stderr: fd,
+    stdout: fd ?? 'ignore',
+    stderr: fd ?? 'ignore',
     detached: true,
   })
   proc.unref()
-  closeSync(fd)
+  if (fd !== null) closeSync(fd)
   return proc.pid
 }
 
