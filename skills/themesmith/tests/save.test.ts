@@ -187,9 +187,11 @@ test('uses the theme Shopify connected to the branch once the push reaches it', 
   const connected = join(shop, 'themes/200')
   // Git runs hooks with its own sh, also on Windows, where that sh wants forward slashes.
   const to = connected.replace(/\\/g, '/')
-  // Git's tar on Windows reads "C:/…" as a remote host unless told the path is local.
-  const tar = windows ? 'tar --force-local' : 'tar'
-  writeFileSync(join(remote, 'hooks/post-receive'), `#!/bin/sh\nwhile read old new ref; do mkdir -p "${to}" && git archive "$new" | ${tar} -x -C "${to}"; done\n`)
+  const log = join(dir, 'hook.log').replace(/\\/g, '/')
+  writeFileSync(
+    join(remote, 'hooks/post-receive'),
+    `#!/bin/sh\nwhile read old new ref; do mkdir -p "${to}" && git --work-tree="${to}" checkout -f "$new" -- . 2>> "${log}"; echo "synced $new" >> "${log}"; done\n`
+  )
   chmodSync(join(remote, 'hooks/post-receive'), 0o755)
   // An earlier save, before the branch was connected, made a development theme for it.
   writeFileSync(
@@ -204,6 +206,9 @@ test('uses the theme Shopify connected to the branch once the push reaches it', 
   writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>New</h1>\n')
 
   const { result } = save('--message', 'Update hero text') as { result: { ok: boolean; preview?: string; previewTheme?: object; connectTip?: string; steps: { step: string }[] } }
+  if (!existsSync(join(connected, 'sections/hero.liquid'))) {
+    throw new Error(`The stand-in GitHub sync didn't copy the push:\n${existsSync(join(dir, 'hook.log')) ? readFileSync(join(dir, 'hook.log'), 'utf8') : '(the hook never ran)'}`)
+  }
   expect(result).toMatchObject({ ok: true, preview: 'https://example.myshopify.com/?preview_theme_id=200', previewTheme: { kind: 'connected', name: 'remote/hero-text' } })
   expect(result.connectTip).toBeUndefined()
   // The branch's own development theme is gone; another branch's stays.

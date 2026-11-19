@@ -177,6 +177,8 @@ test('dev.ts starts the preview in the background and finds pages to preview new
   installShopify(`require('fs').writeFileSync(${JSON.stringify(join(dir, 'cli-started'))}, process.argv.slice(2).join(' '))
 const port = 20000 + Math.floor(Math.random() * 20000)
 Bun.serve({ port, fetch: () => new Response('<a href="/pages/about">About</a><a href="/products/widget">Widget</a>', { headers: { 'content-type': 'text/html' } }) })
+// Written straight to the file first: if only this line reaches the log, console.log's output is being held back.
+require('fs').writeSync(1, 'fake CLI started\\n')
 console.log('Preview your theme: http://127.0.0.1:' + port)
 console.log('Share your theme preview (https://example.myshopify.com/?preview_theme_id=123)')
 `)
