@@ -48,13 +48,18 @@ export function checkImages(filePaths: string[]): void {
     }
   });
 
+  // Whole Liquid tags, since a formatter wraps a long `image_tag` call across lines. A `{% liquid %}` tag holds one
+  // statement per line.
   for (const file of files) {
-    file.lines.forEach((line, index) => {
-      if (!/image_tag/i.test(line) || /\bwidths\s*:/i.test(line)) {
-        return;
+    const content = file.lines.join("\n");
+    for (const match of content.matchAll(/\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}/g)) {
+      const start = content.slice(0, match.index).split("\n").length;
+      const statements = /^\{%-?\s*liquid\b/.test(match[0]) ? match[0].split("\n").map((text, i) => ({ text, line: start + i })) : [{ text: match[0], line: start }];
+      for (const { text, line } of statements) {
+        if (/\|\s*image_tag\b/i.test(text) && !/\bwidths\s*:/i.test(text)) {
+          emit("IMG-03", `${file.path}:${line}`, "image_tag without widths:");
+        }
       }
-
-      emit("IMG-03", `${file.path}:${index + 1}`, "image_tag without widths:");
-    });
+    }
   }
 }

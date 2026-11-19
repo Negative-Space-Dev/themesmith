@@ -7,6 +7,10 @@ function getAttribute(tag: string, name: string): string | undefined {
   return match?.[2] ?? match?.[3] ?? match?.[4];
 }
 
+// A class naming the container itself (`modal`, `cart-drawer`), not one of its parts (`modal-close`,
+// `cart-drawer__header`).
+const MODAL_CLASS = /^(?:[\w-]+[-_])?(?:modal|dialog|popover|drawer|off-?canvas)$/i;
+
 export function checkModalsDialogs(filePaths: string[]): void {
   const files = readExistingFiles(filePaths);
 
@@ -17,9 +21,7 @@ export function checkModalsDialogs(filePaths: string[]): void {
     const isDialogElement = /^<\s*dialog\b/i.test(tag);
     const hasDialogRole = /^dialog$/i.test(role);
     const hasAriaModal = /\baria-modal\s*=\s*["']?true\b/i.test(tag);
-    const looksLikeModal =
-      /\b(modal|dialog|popover)\b/i.test(className) ||
-      /\b(drawer|off-?canvas)\b/i.test(className);
+    const looksLikeModal = className.split(/\s+/).some((name) => MODAL_CLASS.test(name));
 
     if (looksLikeModal && !isDialogElement && !hasDialogRole) {
       emit("MODAL-01", location, 'modal container without <dialog>/role="dialog"');

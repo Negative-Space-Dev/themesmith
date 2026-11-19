@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "types": ["bun"]
   },
-  "include": ["install.ts", "tests", "skills/themesmith/scripts", "skills/themesmith/tests"]
+  "include": ["install.ts", "tests", "skills/themesmith/scripts", "skills/themesmith/tests", "skills/theme-code-review/scripts", "skills/theme-code-review/tests"]
 }

@@ -36,7 +36,7 @@ the snippet everywhere video media is rendered (except the exceptions above).
 - Loads `lazy-video.js` as a module script
 
 ```liquid
-{% render 'lazy-video', media: media, classes: 'h-full w-full object-cover', controls: true %}
+{% render 'lazy-video', media: media, classes: 'video-cover', controls: true %}
 ```
 
 ### `assets/lazy-video.js`
@@ -57,10 +57,12 @@ unless excepted.
 
 ## How to fix
 
-**Auto-fix:** If `snippets/lazy-video.liquid` and `assets/lazy-video.js` exist,
-replace eager `<video src="…">` / inline `<source>` markup with
-`{% render 'lazy-video', media: media %}`. If they do not exist, create them using
-the standard setup above, then render the snippet.
+**Proposed fix:** Use the theme's own lazy-loading pattern when it has one, such as
+Dawn's `<deferred-media>` or an existing `lazy-video` snippet. Only when the theme
+has none, propose adding `snippets/lazy-video.liquid` and `assets/lazy-video.js`
+as in the standard setup above, with classes that match the theme's own CSS. Don't
+add that snippet as an automatic fix: it is new code the theme's owner should
+agree to.
 
 For iframes, add `loading="lazy"` by default.
 

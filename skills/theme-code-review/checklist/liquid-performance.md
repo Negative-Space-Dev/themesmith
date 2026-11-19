@@ -11,7 +11,10 @@
 
 #### LIQUID-01 — No nested loops over large collections
 
-- **applies-when:** a `{% for %}` appears inside another `{% for %}`
+- **applies-when:** a `{% for %}` appears inside another `{% for %}`, and one of
+  them goes over a list that can be large (products, variants, collections,
+  search results, articles). Nested loops over small fixed lists, such as a
+  product's options and their values, are fine.
 - **check:** auto
 - **fix:** propose
 - **severity:** blocker

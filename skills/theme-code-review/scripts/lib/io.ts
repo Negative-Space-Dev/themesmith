@@ -76,12 +76,16 @@ export function scanLines(
   }
 }
 
+// The inside of an opening tag, up to its closing `>`. A `>` inside Liquid (`{% if count > 0 %}`) or inside a
+// quoted attribute value doesn't end the tag.
+const TAG_BODY = String.raw`(?:\{%[\s\S]*?%\}|\{\{[\s\S]*?\}\}|"[^"]*"|'[^']*'|\{(?![{%])|[^>{"'])*`;
+
 export function scanHtmlTags(
   files: SourceFile[],
   tagName: string,
   onMatch: (match: HtmlTagMatch) => void,
 ): void {
-  const pattern = new RegExp(`<\\s*${tagName}\\b[\\s\\S]*?>`, "gi");
+  const pattern = new RegExp(`<\\s*${tagName}\\b${TAG_BODY}>`, "gi");
 
   for (const file of files) {
     const content = file.lines.join("\n");
@@ -97,7 +101,7 @@ export function scanHtmlElements(
   files: SourceFile[],
   onMatch: (match: HtmlTagMatch) => void,
 ): void {
-  const pattern = /<\s*[a-z][\w:-]*\b[\s\S]*?>/gi;
+  const pattern = new RegExp(`<\\s*[a-z][\\w:-]*\\b${TAG_BODY}>`, "gi");
 
   for (const file of files) {
     const content = file.lines.join("\n");
