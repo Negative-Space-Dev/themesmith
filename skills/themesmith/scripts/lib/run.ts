@@ -99,7 +99,10 @@ export class Run {
   }
 }
 
+// A path as one argument to the system shell (see exec.ts). cmd.exe on Windows takes backslashes as they are, and a
+// Windows path can't hold a double quote.
 export function shellQuote(path: string): string {
+  if (process.platform === 'win32') return `"${path}"`
   return `"${path.replace(/(["\\$`])/g, '\\$1')}"`
 }
 

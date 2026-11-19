@@ -12,7 +12,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join, relative } from 'node:path'
 import { exec } from './exec.ts'
 import { globMatch, type Profile } from './profile.ts'
 import { describeError, runShopifyJsonAsync } from './shopify.ts'
@@ -184,7 +184,7 @@ export async function pushDevelopment(root: string, profile: Profile, branch: st
   const r = await cli<Pushed>(root, profile, 'push', '--development', '--development-context', devContext(branch), '--path', root)
   if (!r.ok) return r
   if (r.result.status !== 'success' && r.result.status !== 'partial') return { ok: false, step: 'preview', message: `The Shopify CLI didn't upload the preview (${r.result.status}).` }
-  const issues = r.result.issues.map((i) => ({ file: i.filePath.replace(`${root}/`, ''), message: i.message }))
+  const issues = r.result.issues.map((i) => ({ file: isAbsolute(i.filePath) ? relative(root, i.filePath).replace(/\\/g, '/') : i.filePath, message: i.message }))
   if (!r.exitedOk || issues.length > 0) {
     return { ok: false, step: 'preview', message: `Some files didn't upload to the preview theme "${r.result.theme.name}". Fix them and save again.`, issues }
   }

@@ -1,14 +1,15 @@
 // Themesmith's version, and updating it. A release is a commit to `main` that raises the version in this skill's
 // package.json. The computer-wide install is a Git checkout (see install.ts), so an update fast-forwards it and
 // runs install.ts again; one update covers every theme on the computer.
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { exec } from './exec.ts'
 import { SKILL_DIR } from './run.ts'
 import { atLeast } from './tools.ts'
 
-const PACKAGE = join('skills', basename(SKILL_DIR), 'package.json')
+// A path inside Git (`origin/main:<path>`), which takes forward slashes on every system.
+const PACKAGE = `skills/${basename(SKILL_DIR)}/package.json`
 // Looking for a new version at most this often; the doctor runs at the start of every conversation.
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000
 
@@ -21,7 +22,20 @@ async function checkout(): Promise<string | null> {
   if (basename(dirname(SKILL_DIR)) !== 'skills') return null
   const dir = dirname(dirname(SKILL_DIR))
   const top = await exec(['git', 'rev-parse', '--show-toplevel'], { cwd: dir, timeout: 5_000 })
-  return top.ok && top.stdout.trim() === dir ? dir : null
+  return top.ok && samePath(top.stdout.trim(), dir) ? dir : null
+}
+
+// Git prints C:/Users/... on Windows where Node has C:\Users\..., and either may go through a link.
+function samePath(a: string, b: string): boolean {
+  const real = (p: string) => {
+    try {
+      return realpathSync(resolve(p))
+    } catch {
+      return resolve(p)
+    }
+  }
+  const [x, y] = [real(a), real(b)]
+  return process.platform === 'win32' ? x.toLowerCase() === y.toLowerCase() : x === y
 }
 
 type Cache = { checkedAt: number; latest: string | null; changes: string[]; skipped?: string }
