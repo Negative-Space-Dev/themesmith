@@ -14,7 +14,7 @@
 // where `git stash pop` brings them back.
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { defaultBranch } from './lib/branch.ts'
+import { defaultBranch } from './lib/git.ts'
 import { exec } from './lib/exec.ts'
 import { findRoot, isProtectedBranch, loadProfile, parseProfile, PROFILE_PATH, ProfileError, type Profile } from './lib/profile.ts'
 import { Run } from './lib/run.ts'

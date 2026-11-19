@@ -3,7 +3,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, relative } from 'node:path'
-import { defaultBranch as namedDefaultBranch } from './branch.ts'
+import { defaultBranch as namedDefaultBranch, onGitHub } from './git.ts'
 import { exec } from './exec.ts'
 import { globMatch, type Command, type DevModeMarker, type Mode } from './profile.ts'
 
@@ -150,7 +150,7 @@ export async function suggestProfile(root: string): Promise<SuggestedProfile> {
   const connected = [...syncs.keys()].sort((a, b) => syncs.get(b)! - syncs.get(a)!)
   // The default branch: what origin/HEAD names, else main or master, else the branch Shopify syncs most.
   const defaultBranch = namedDefaultBranch(root) ?? connected[0] ?? 'main'
-  const github = origin.includes('github.com')
+  const github = onGitHub(origin)
   const mode: Mode = github ? 'github' : 'cli'
   const modeSource = github
     ? connected.length > 0

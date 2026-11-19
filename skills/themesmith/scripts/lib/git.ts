@@ -14,3 +14,13 @@ export function defaultBranch(root: string): string | null {
   const named = git(root, 'for-each-ref', '--format=%(refname:lstrip=-1)', 'refs/remotes/origin/main', 'refs/remotes/origin/master', 'refs/heads/main', 'refs/heads/master')
   return named.split('\n').find(Boolean) ?? null
 }
+
+// Whether origin is on GitHub, also behind an SSH host alias (`git@github-work:org/theme.git`, with
+// `Host github-work` / `HostName github.com` in ~/.ssh/config), which `ssh -G` resolves without connecting.
+export function onGitHub(origin: string): boolean {
+  if (/(^|[@/.])github\.com[:/]/i.test(origin)) return true
+  const host = origin.match(/^(?:ssh:\/\/)?(?:[^@/]+@)?([^:/]+)[:/]/)?.[1]
+  if (!host || /^https?$/i.test(host)) return false
+  const r = spawnSync('ssh', ['-G', host], { encoding: 'utf8', timeout: 5_000 })
+  return r.status === 0 && /^hostname\s+github\.com\s*$/im.test(r.stdout)
+}

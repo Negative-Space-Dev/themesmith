@@ -328,3 +328,21 @@ console.log(JSON.stringify({ issues: [{ filePath: path + '/sections/hero.liquid'
   expect(readFileSync(join(dir, 'check-path'), 'utf8')).not.toContain('/.worktrees/')
   expect(r.stdout).toContain('error   sections/hero.liquid:2  broken (MissingTemplate)')
 })
+
+test('a GitHub remote behind an SSH host alias counts as GitHub', async () => {
+  // ssh -G, as it answers with `Host github-work` / `HostName github.com` in ~/.ssh/config.
+  mkdirSync(join(dir, 'bin'), { recursive: true })
+  writeFileSync(join(dir, 'bin/ssh'), `#!/bin/sh\n[ "$2" = github-work ] && echo "hostname github.com" || echo "hostname $2"\n`)
+  chmodSync(join(dir, 'bin/ssh'), 0o755)
+  git(repo, 'remote', 'add', 'origin', 'git@github-work:acme/theme.git')
+  commit('init')
+  const path = process.env.PATH
+  process.env.PATH = `${join(dir, 'bin')}:${path}`
+  try {
+    expect((await suggestProfile(repo)).mode).toBe('github')
+    git(repo, 'remote', 'set-url', 'origin', 'git@gitlab.com:acme/theme.git')
+    expect((await suggestProfile(repo)).mode).toBe('cli')
+  } finally {
+    process.env.PATH = path
+  }
+})

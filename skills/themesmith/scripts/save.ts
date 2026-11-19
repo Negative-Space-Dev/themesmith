@@ -11,7 +11,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { defaultBranch } from './lib/branch.ts'
+import { defaultBranch } from './lib/git.ts'
 import { stopDev } from './lib/dev.ts'
 import { exec } from './lib/exec.ts'
 import { changedThemeFiles, findThemes, updatePreview, type Failure } from './lib/preview.ts'

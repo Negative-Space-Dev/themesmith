@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join } from 'node:path'
 import { suggestProfile, type SuggestedProfile } from './lib/detect.ts'
 import { exec, isRunning, startDetached } from './lib/exec.ts'
+import { onGitHub } from './lib/git.ts'
 import { findRoot, globMatch, loadProfile, parseProfile, PROFILE_PATH, ProfileError, type Profile } from './lib/profile.ts'
 import { arg } from './lib/run.ts'
 import { describeError, runShopifyJsonAsync } from './lib/shopify.ts'
@@ -50,7 +51,7 @@ const ok = (name: string, label: string, detail?: string, needs: Item['needs'] =
 const missing = (name: string, label: string, needs: Item['needs'], detail?: string): Item => ({ name, label, status: 'missing', needs, ...(detail ? { detail } : {}) })
 
 async function githubTheme(profile: Profile | null): Promise<boolean> {
-  return profile ? profile.mode === 'github' : (await exec(['git', 'remote', 'get-url', 'origin'], { cwd: root })).out.includes('github.com')
+  return profile ? profile.mode === 'github' : onGitHub((await exec(['git', 'remote', 'get-url', 'origin'], { cwd: root })).stdout.trim())
 }
 
 // Tools the person can turn down at setup (`--skip`): without the GitHub CLI, they open pull requests on GitHub
@@ -147,7 +148,9 @@ async function accountItems(profile: Profile | null, github: boolean): Promise<{
   if (github) {
     items.push(name!.ok ? ok('git name', 'Your name on saved work', name!.stdout.trim(), 'you') : missing('git name', 'Your name on saved work', 'you'))
     items.push(email!.ok ? ok('git email', 'Your email on saved work', email!.stdout.trim(), 'you') : missing('git email', 'Your email on saved work', 'you'))
-    items.push(remote!.ok && remote!.stdout.includes('github.com') ? ok('github remote', 'GitHub repository', remote!.stdout.trim(), 'you') : missing('github remote', 'GitHub repository', 'you', remote!.ok ? `origin is ${remote!.stdout.trim()}` : 'no origin remote'))
+    // The profile says GitHub mode, so any origin counts: an SSH host alias or GitHub Enterprise address is the
+    // person's choice. Only a missing origin can't work.
+    items.push(remote!.ok ? ok('github remote', 'GitHub repository', remote!.stdout.trim(), 'you') : missing('github remote', 'GitHub repository', 'you', 'no origin remote'))
     if (gh) items.push(gh.ok ? ok('github sign-in', 'GitHub sign-in', undefined, 'sign in') : missing('github sign-in', 'GitHub sign-in', 'sign in'))
   }
   let live: string | null = null
