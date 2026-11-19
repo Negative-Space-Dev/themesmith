@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join, resolve } from 'node:path'
-import { installFakeShopify, pathWith, windows } from './helpers.ts'
+import { installFakeShopify, pathWith, removeDir, windows } from './helpers.ts'
 
 const SKILL_DIR = resolve(import.meta.dir, '..')
 const LIVE = 100
@@ -63,7 +63,7 @@ beforeEach(() => {
   write(folder, '.shopifyignore', '.agents/**\n.themesmith/**\n')
 })
 
-afterEach(() => rmSync(dir, { recursive: true, force: true }))
+afterEach(() => removeDir(dir))
 
 test('start copies the live theme into the folder', () => {
   expect(theme('start').ok).toBe(true)

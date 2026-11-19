@@ -86,7 +86,8 @@ export class Run {
   async prepare(profile: Profile, changed: string[]) {
     const own = changed.filter((f) => !profile.generated.some((g) => globMatch(g, f)))
     const files = own.filter((f) => FORMATTABLE.test(f))
-    const fileArg = (command: Command, f: string) => shellQuote(relative(join(this.root, command.cwd), join(this.root, f)))
+    // Forward slashes on every system: Windows tools accept them, and the paths read the same everywhere.
+    const fileArg = (command: Command, f: string) => shellQuote(relative(join(this.root, command.cwd), join(this.root, f)).replace(/\\/g, '/'))
     const filesFor = (command: Command) => files.map((f) => fileArg(command, f)).join(' ')
     if (files.length > 0) await this.format(profile, files, fileArg)
     await this.commands('build', profile.build, () => ({ store: profile.store }))

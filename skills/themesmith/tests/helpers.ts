@@ -1,5 +1,5 @@
 // Fakes for the programs the scripts run, built so they work on Mac, Linux and Windows alike.
-import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { delimiter, dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -39,4 +39,19 @@ export function installFakeShopify(bin: string, source: string) {
   const entry = join(bin, 'node_modules', '@shopify', 'cli', 'bin', 'run.js')
   mkdirSync(dirname(entry), { recursive: true })
   writeFileSync(entry, `await import(${JSON.stringify(pathToFileURL(cli).href)})\n`)
+}
+
+// A command line that runs `source` on Bun from a script file in `dir`. It reads the same under sh and cmd.exe,
+// which `bun -e "…"` with quotes inside doesn't. The script's arguments start at process.argv[2].
+export function bunCommand(dir: string, name: string, source: string): string {
+  const file = join(dir, 'commands', `${name}.ts`)
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, source)
+  return `bun "${file}"`
+}
+
+// Removes a test's folder. On Windows a folder can't go while a process the test started in the background (a
+// preview, a full Theme Check) is still using it, so this retries for a few seconds.
+export function removeDir(dir: string) {
+  rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 })
 }

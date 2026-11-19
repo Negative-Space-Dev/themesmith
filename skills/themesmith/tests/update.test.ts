@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import { removeDir } from './helpers.ts'
 
 const UPDATE = resolve(import.meta.dir, '../scripts/update.ts')
 let dir: string
@@ -50,7 +51,7 @@ beforeEach(() => {
   update('install', upstream)
 })
 
-afterEach(() => rmSync(dir, { recursive: true, force: true }))
+afterEach(() => removeDir(dir))
 
 test('install copies every skill and records the upstream commit', () => {
   expect(local('SKILL.md')).toBe('one\ntwo\nthree\nfour\nfive\n')

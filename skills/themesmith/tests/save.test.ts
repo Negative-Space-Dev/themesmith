@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { installFakeShopify, pathWith } from './helpers.ts'
+import { bunCommand, installFakeShopify, pathWith, removeDir } from './helpers.ts'
 
 const SKILL_DIR = resolve(import.meta.dir, '..')
 const DEV_TAG = '<script src="http://127.0.0.1:5173/main.ts"></script>\n'
@@ -27,7 +27,7 @@ function setProfile(build: string) {
       mode: 'github',
       protectedBranches: ['main*'],
       build: [{ cwd: '.', run: build }],
-      format: [{ cwd: '.', run: 'bun -e "require(\'fs\').appendFileSync(\'format.log\', process.argv.slice(1).join(\' \') + \'\\n\')" {files}' }],
+      format: [{ cwd: '.', run: `${bunCommand(dir, 'format', "require('fs').appendFileSync('format.log', process.argv.slice(2).join(' ') + '\\n')\n")} {files}` }],
       devModeMarkers: [{ file: 'snippets/vite-tag.liquid', contains: '127.0.0.1' }],
     })
   )
@@ -42,7 +42,7 @@ function save(...args: string[]) {
   return { code: r.status, result: JSON.parse(r.stdout) as { ok: boolean; steps: { step: string; ok: boolean; detail?: string }[] } }
 }
 
-const fixBuild = `bun -e "require('fs').writeFileSync('snippets/vite-tag.liquid', ${JSON.stringify(JSON.stringify(BUILT_TAG)).slice(1, -1)})"`
+const fixBuild = () => bunCommand(dir, 'fix-build', `require('fs').writeFileSync('snippets/vite-tag.liquid', ${JSON.stringify(BUILT_TAG)})\n`)
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'themesmith-save-'))
@@ -64,14 +64,14 @@ beforeEach(() => {
   writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>Old</h1>\n')
   writeFileSync(join(repo, '.gitignore'), 'format.log\n')
   mkdirSync(join(repo, '.agents'), { recursive: true })
-  setProfile(fixBuild)
+  setProfile(fixBuild())
   git(repo, 'add', '-A')
   git(repo, 'commit', '-qm', 'init')
   git(repo, 'push', '-q', 'origin', 'main')
   git(repo, 'checkout', '-qb', 'hero-text')
 })
 
-afterEach(() => rmSync(dir, { recursive: true, force: true }))
+afterEach(() => removeDir(dir))
 
 test('builds before pushing, so a dev-mode tag never reaches the branch', () => {
   writeFileSync(join(repo, 'snippets/vite-tag.liquid'), DEV_TAG)
@@ -85,7 +85,7 @@ test('builds before pushing, so a dev-mode tag never reaches the branch', () => 
 })
 
 test('refuses to commit or push when the build leaves dev mode behind', () => {
-  setProfile('bun -e "0"')
+  setProfile('bun --version')
   writeFileSync(join(repo, 'snippets/vite-tag.liquid'), DEV_TAG)
   const { code, result } = save('--message', 'Update hero text')
   expect(code).toBe(1)
@@ -149,7 +149,7 @@ test('pulls theme editor commits on the branch before pushing', () => {
 
 test('runs profile checks with {skill} replaced by the folder this skill is installed in', () => {
   const profile = JSON.parse(readFileSync(join(repo, '.agents/themesmith.json'), 'utf8'))
-  profile.checks = [{ cwd: '.', run: `bun -e "require('fs').writeFileSync('check.log', process.argv[1])" {skill}` }]
+  profile.checks = [{ cwd: '.', run: `${bunCommand(dir, 'check', "require('fs').writeFileSync('check.log', process.argv[2])\n")} {skill}` }]
   writeFileSync(join(repo, '.agents/themesmith.json'), JSON.stringify(profile))
   writeFileSync(join(repo, '.gitignore'), 'format.log\ncheck.log\n')
   writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>New</h1>\n')
@@ -220,7 +220,18 @@ test('checks what Git is about to save for dev mode, not only the folder', () =>
   // A build that leaves the folder clean but has staged a dev-mode tag before it ran.
   writeFileSync(join(repo, 'snippets/vite-tag.liquid'), DEV_TAG)
   git(repo, 'add', 'snippets/vite-tag.liquid')
-  setProfile(`bun -e "require('fs').writeFileSync('snippets/vite-tag.liquid', 'x'); require('child_process').execSync('git add snippets/vite-tag.liquid && git show :snippets/vite-tag.liquid'); require('fs').writeFileSync('.git/info/attributes', 'snippets/vite-tag.liquid filter=devtag'); require('child_process').execSync('git config filter.devtag.clean \\"printf http://127.0.0.1:5173\\"')"`)
+  setProfile(
+    bunCommand(
+      dir,
+      'staged-dev-tag',
+      `const { execSync } = require('child_process')
+require('fs').writeFileSync('snippets/vite-tag.liquid', 'x')
+execSync('git add snippets/vite-tag.liquid && git show :snippets/vite-tag.liquid')
+require('fs').writeFileSync('.git/info/attributes', 'snippets/vite-tag.liquid filter=devtag')
+execSync('git config filter.devtag.clean "printf http://127.0.0.1:5173"')
+`
+    )
+  )
   const { code, result } = save('--message', 'Update hero text')
   expect(code).toBe(1)
   expect(result.steps.at(-1)).toMatchObject({ step: 'dev mode check', ok: false })
@@ -268,7 +279,16 @@ test('a force-push with lease replaces nothing when someone pushed after the sav
   writeFileSync(join(other, 'sections/late.liquid'), 'late\n')
   git(other, 'add', '-A')
   git(other, 'commit', '-qm', 'Pushed during the build')
-  setProfile(`${fixBuild} && sleep 1 && git -C "${other}" push -q`)
+  setProfile(
+    bunCommand(
+      dir,
+      'build-then-push',
+      `require('fs').writeFileSync('snippets/vite-tag.liquid', ${JSON.stringify(BUILT_TAG)})
+Bun.sleepSync(1000)
+require('child_process').execFileSync('git', ['-C', ${JSON.stringify(other)}, 'push', '-q'])
+`
+    )
+  )
 
   writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>Mine</h1>\n')
   const { code, result } = save('--message', 'Tweak hero text', '--force-with-lease')
@@ -366,10 +386,22 @@ function setFormat(run: string) {
 }
 
 // A formatter that can't read any file whose name has "legacy" in it, the way Prettier fails on broken HTML.
-const pickyFormat = `bun -e "const a = process.argv.slice(1); if (a.some((f) => f.includes('legacy'))) { console.error('[error] ' + a.find((f) => f.includes('legacy')) + ': LiquidHTMLParsingError: Attempting to close HtmlElement'); process.exit(2) } require('fs').appendFileSync('format.log', a.join(' ') + '\\\\n')" {files}`
+const pickyFormat = () =>
+  `${bunCommand(
+    dir,
+    'picky-format',
+    `const a = process.argv.slice(2)
+const legacy = a.find((f) => f.includes('legacy'))
+if (legacy) {
+  console.error('[error] ' + legacy + ': LiquidHTMLParsingError: Attempting to close HtmlElement')
+  process.exit(2)
+}
+require('fs').appendFileSync('format.log', a.join(' ') + '\\n')
+`
+  )} {files}`
 
 test('saves a file the formatter cannot read as it is, naming it, and formats the rest', () => {
-  setFormat(pickyFormat)
+  setFormat(pickyFormat())
   writeFileSync(join(repo, 'sections/legacy.liquid'), '<div>\n')
   writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>New</h1>\n')
   const { result } = save('--message', 'Hero text', '--no-push')
@@ -379,7 +411,7 @@ test('saves a file the formatter cannot read as it is, naming it, and formats th
 })
 
 test('a formatter that fails for any other reason still stops the save', () => {
-  setFormat('bun -e "console.error(\'No parser could be inferred\'); process.exit(2)" {files}')
+  setFormat(`${bunCommand(dir, 'broken-format', "console.error('No parser could be inferred')\nprocess.exit(2)\n")} {files}`)
   writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>New</h1>\n')
   const { result } = save('--message', 'Hero text', '--no-push')
   expect(result.ok).toBe(false)

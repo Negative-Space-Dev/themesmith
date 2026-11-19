@@ -6,7 +6,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { suggestProfile } from '../scripts/lib/detect.ts'
-import { installCommand, installFakeShopify, pathWith } from './helpers.ts'
+import { installCommand, installFakeShopify, pathWith, removeDir } from './helpers.ts'
 
 const SCRIPTS = resolve(import.meta.dir, '../scripts')
 let dir: string
@@ -35,6 +35,8 @@ function script(name: string, ...args: string[]) {
   const r = spawnSync('bun', [join(SCRIPTS, name), ...args], {
     cwd: repo,
     encoding: 'utf8',
+    // dev.ts waits up to 3 minutes for a preview; give up sooner and show why (see the dev.ts test).
+    timeout: 40_000,
     env: { ...process.env, PATH: pathWith(join(dir, 'bin')), BUN_INSTALL_GLOBAL_DIR: join(dir, 'no-bun-global') },
   })
   return { code: r.status, stdout: r.stdout, stderr: r.stderr, json: () => JSON.parse(r.stdout) }
@@ -53,7 +55,7 @@ beforeEach(() => {
 
 afterEach(() => {
   spawnSync('bun', [join(SCRIPTS, 'dev.ts'), 'stop'], { cwd: repo })
-  rmSync(dir, { recursive: true, force: true })
+  removeDir(dir)
 })
 
 test('suggests a profile from the repository: protected branches, asset builds, and built files', async () => {
@@ -179,7 +181,14 @@ console.log('Share your theme preview (https://example.myshopify.com/?preview_th
 `)
   profile({ dev: [{ cwd: '.', run: 'bun {skill}/scripts/shopify.ts theme dev --store {store}' }] })
 
-  const started = script('dev.ts').json()
+  const run = script('dev.ts')
+  const log = (i: number) => (existsSync(join(repo, `.themesmith/dev/${i}.log`)) ? readFileSync(join(repo, `.themesmith/dev/${i}.log`), 'utf8') : '(no log)')
+  let started
+  try {
+    started = run.json()
+  } catch {
+    throw new Error(`dev.ts printed no JSON (exit ${run.code}):\n${run.stdout}\n${run.stderr}\npreview log:\n${log(0)}`)
+  }
   expect(started).toMatchObject({ ok: true, share: 'https://example.myshopify.com/?preview_theme_id=123', samples: { page: '/pages/about', product: '/products/widget', collection: null } })
   expect((await fetch(started.preview)).ok).toBe(true)
   expect(script('dev.ts', 'status').json().running).toBe(true)

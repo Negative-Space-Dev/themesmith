@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { installFakeShopify, pathWith } from './helpers.ts'
+import { installFakeShopify, pathWith, removeDir } from './helpers.ts'
 
 const DOCTOR = resolve(import.meta.dir, '../scripts/doctor.ts')
 let dir: string
@@ -78,7 +78,7 @@ beforeEach(() => {
   write(join(theme, 'sections/hero.liquid'), '<h1>Hi</h1>\n')
 })
 
-afterEach(() => rmSync(dir, { recursive: true, force: true }))
+afterEach(() => removeDir(dir))
 
 test('flags a Shopify CLI older than 5.0 in the chart', () => {
   installShopify('4.9.4')

@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { installCommand } from './helpers.ts'
+import { installCommand, removeDir } from './helpers.ts'
 
 const SETUP = resolve(import.meta.dir, '../scripts/setup-tools.ts')
 let repo: string
@@ -53,7 +53,7 @@ console.log(JSON.stringify({ ignored: false, inferredParser: config.includes('pr
   write('preview.liquid')
 })
 
-afterEach(() => rmSync(repo, { recursive: true, force: true }))
+afterEach(() => removeDir(repo))
 
 test('lists folders outside the theme, root Liquid and JSON files, and page builder files found in the theme', () => {
   expect(setup().missingThemeCheckIgnores).toEqual([

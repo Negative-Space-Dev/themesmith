@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { removeDir } from './helpers.ts'
 
 const REPO = resolve(import.meta.dir, '../../..')
 // The version in this checkout, and the next one a release would raise it to.
@@ -69,7 +70,7 @@ beforeEach(() => {
   git(dir, 'clone', '-q', upstream, install)
 })
 
-afterEach(() => rmSync(dir, { recursive: true, force: true }))
+afterEach(() => removeDir(dir))
 
 test('offers a newer version, can stop offering it, and updates the computer-wide install', () => {
   expect(doctor().version).toBe(CURRENT)
