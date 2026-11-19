@@ -13,6 +13,9 @@ export const SKILL_DIR = resolve(import.meta.dir, '../..')
 
 export const FORMATTABLE = /\.(liquid|json|js|ts|tsx|jsx|css|scss|md)$/
 
+// How a formatter says it couldn't read a file (Prettier and its Liquid plugin), as opposed to failing to run.
+const UNREADABLE = /SyntaxError|ParsingError|ParseError|Unexpected (?:token|closing tag)/
+
 export class Run {
   readonly steps: Step[] = []
   constructor(readonly root: string) {}
@@ -47,6 +50,32 @@ export class Run {
     }
   }
 
+  // Formats the files. A file the formatter can't read (often HTML that was never well formed in an old theme) is
+  // left as it is and named in the step, so it doesn't block the save; any other failure stops it.
+  async format(profile: Profile, files: string[], fileArg: (command: Command, file: string) => string) {
+    for (const command of profile.format) {
+      const vars = (list: string[]) => ({ skill: shellQuote(SKILL_DIR), store: profile.store, files: list.map((f) => fileArg(command, f)).join(' ') })
+      const all = await this.shell(command, vars(files))
+      if (all.r.ok) {
+        this.ok('format', all.cmd)
+        continue
+      }
+      const each = await Promise.all(files.map(async (f) => ({ f, ...(await this.shell(command, vars([f]))) })))
+      const failed = each.filter((e) => !e.r.ok)
+      const broken = failed.find((e) => !UNREADABLE.test(e.r.out))
+      if (broken || failed.length === 0) {
+        const shown = broken ?? all
+        this.fail('format', `\`${shown.cmd}\` failed:\n${shown.r.out.split('\n').slice(-30).join('\n')}`)
+      }
+      this.ok('format', `${all.cmd}; left unformatted, because the formatter couldn't read them: ${failed.map((e) => e.f).join(', ')}`)
+    }
+  }
+
+  private async shell(command: Command, vars: Record<string, string>) {
+    const cmd = command.run.replace(/\{(\w+)\}/g, (match, key) => vars[key] ?? match)
+    return { cmd, r: await sh(cmd, { cwd: join(this.root, command.cwd) }) }
+  }
+
   devModeLeftovers(profile: Profile): string[] {
     return profile.devModeMarkers
       .filter((m) => existsSync(join(this.root, m.file)) && readFileSync(join(this.root, m.file), 'utf8').includes(m.contains))
@@ -57,8 +86,9 @@ export class Run {
   async prepare(profile: Profile, changed: string[]) {
     const own = changed.filter((f) => !profile.generated.some((g) => globMatch(g, f)))
     const files = own.filter((f) => FORMATTABLE.test(f))
-    const filesFor = (command: Command) => files.map((f) => shellQuote(relative(join(this.root, command.cwd), join(this.root, f)))).join(' ')
-    if (files.length > 0) await this.commands('format', profile.format, (c) => ({ store: profile.store, files: filesFor(c) }))
+    const fileArg = (command: Command, f: string) => shellQuote(relative(join(this.root, command.cwd), join(this.root, f)))
+    const filesFor = (command: Command) => files.map((f) => fileArg(command, f)).join(' ')
+    if (files.length > 0) await this.format(profile, files, fileArg)
     await this.commands('build', profile.build, () => ({ store: profile.store }))
     const leftovers = this.devModeLeftovers(profile)
     if (leftovers.length > 0) {

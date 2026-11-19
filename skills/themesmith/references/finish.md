@@ -12,7 +12,7 @@ If it lists no `units`, go on. If it lists some, review them now as in steps 2 a
 
 ## 2. Save
 
-Saving formats every changed file whole (Prettier's Liquid support can't format part of a file), so the first save that touches an unformatted file also reformats the rest of it. Mention that in the pull request when it happens so the reviewer can tell formatting from the change.
+Saving formats every changed file whole (Prettier's Liquid support can't format part of a file), so the first save that touches an unformatted file also reformats the rest of it. Mention that in the pull request when it happens so the reviewer can tell formatting from the change. A file the formatter can't read (old HTML that was never well formed) is saved as it is, and the save's `format` step names it; mention that too.
 
 ```bash
 bun <skill>/scripts/save.ts --message "<what changed, in plain words>"

@@ -160,3 +160,13 @@ test('--fix stops before changing anything when no store is known', () => {
   expect(r).toEqual({ ok: false, message: "Pass --store with the store's .myshopify.com address." })
   expect(existsSync(join(theme, '.agents/themesmith.json'))).toBe(false)
 })
+
+test('--fix loads the Liquid plugin in the format command when the theme\'s Prettier config leaves it out', () => {
+  installShopify('5.0.1')
+  profile({ format: [{ cwd: '.', run: 'bun x prettier --config .prettierrc.json --write {files}' }] })
+  write(join(theme, '.prettierrc.json'), JSON.stringify({ semi: false }))
+  expect(doctor(['--fix']).ok).toBe(true)
+  const saved = JSON.parse(readFileSync(join(theme, '.agents/themesmith.json'), 'utf8'))
+  expect(saved.format[0].run).toContain('--plugin @shopify/prettier-plugin-liquid')
+  expect(doctor().theme.find((i: { name: string }) => i.name === 'profile commands')).toMatchObject({ status: 'ok' })
+})

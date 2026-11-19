@@ -56,19 +56,23 @@ async function githubTheme(profile: Profile | null): Promise<boolean> {
 // Git and the GitHub CLI only matter in GitHub mode.
 const neededTools = (github: boolean): ToolName[] => ['bun', ...(github ? (['git', 'gh'] as const) : []), 'npm', 'shopify', 'theme-check']
 
+const LIQUID_PLUGIN = '@shopify/prettier-plugin-liquid'
+
 // Profile commands that won't work as written: the Shopify CLI must run through the wrapper (on Bun), Shopify CLI
-// 5 removed `theme dev --poll`, and the whole-theme Theme Check gives way to checking only the changed files.
-function commandFixes(profile: Profile): { problems: string[]; fixed: Profile } {
+// 5 removed `theme dev --poll`, the whole-theme Theme Check gives way to checking only the changed files, and
+// Prettier needs the Liquid plugin loaded when the theme's Prettier config doesn't list it (`liquidReady` false).
+function commandFixes(profile: Profile, liquidReady: boolean | null = null): { problems: string[]; fixed: Profile } {
   const problems: string[] = []
   const fixCommand = (run: string) => {
     let next = run.replace(/^(npx\s+)?shopify\s/, 'bun {skill}/scripts/shopify.ts ')
     if (/\stheme\s+dev\b/.test(next)) next = next.replace(/\s--poll\b/, '')
     if (/scripts\/shopify\.ts theme check\b/.test(next)) next = 'bun {skill}/scripts/theme-check.ts {files}'
+    if (liquidReady === false && !next.includes(LIQUID_PLUGIN)) next = next.replace(/(^|\s)prettier(?=\s)/, `$1prettier --plugin ${LIQUID_PLUGIN}`)
     if (next !== run) problems.push(`\`${run}\` → \`${next}\``)
     return next
   }
   const fix = (commands: Profile['dev']) => commands.map((c) => ({ ...c, run: fixCommand(c.run) }))
-  return { problems, fixed: { ...profile, dev: fix(profile.dev), build: fix(profile.build), checks: fix(profile.checks) } }
+  return { problems, fixed: { ...profile, dev: fix(profile.dev), build: fix(profile.build), format: fix(profile.format), checks: fix(profile.checks) } }
 }
 
 type Tooling = {
@@ -76,6 +80,7 @@ type Tooling = {
   missingPackages: string[]
   installed: boolean
   prettierConfig: string | null
+  liquidReady: boolean | null
   themeCheckConfig: boolean
   missingThemeCheckIgnores: unknown[]
   missingIgnores: string[]
@@ -93,7 +98,7 @@ async function setupTools(apply = false): Promise<Tooling> {
 
 function themeItems(profile: Profile | null, t: Tooling | Error): Item[] {
   if (t instanceof Error) return [missing('theme tools', 'Theme tools', 'setup', t.message)]
-  const problems = profile ? commandFixes(profile).problems : []
+  const problems = profile ? commandFixes(profile, t.liquidReady).problems : []
   return [
     profile ? ok('profile', 'Themesmith settings', `${profile.store}, ${profile.mode === 'github' ? 'GitHub' : 'CLI'} mode`) : missing('profile', 'Themesmith settings', 'setup'),
     ...(profile ? [problems.length ? missing('profile commands', 'Preview and check commands', 'setup', problems.join('; ')) : ok('profile commands', 'Preview and check commands')] : []),
@@ -248,7 +253,7 @@ async function fix() {
       generated: s.generated,
     })
   }
-  profile = commandFixes(profile).fixed
+  profile = commandFixes(profile, tooling0.liquidReady).fixed
   mkdirSync(join(root, '.agents'), { recursive: true })
   writeFileSync(join(root, PROFILE_PATH), `${JSON.stringify(profile, null, 2)}\n`)
 
@@ -269,6 +274,14 @@ async function fix() {
     return tooling
   })()
   const [installed, tooling] = await Promise.all([installs, themeSetup.catch((e: Error) => e)])
+  // Whether Prettier formats Liquid is known only once it's installed.
+  if (!(tooling instanceof Error)) {
+    const withPlugin = commandFixes(profile, tooling.liquidReady)
+    if (withPlugin.problems.length > 0) {
+      profile = withPlugin.fixed
+      writeFileSync(join(root, PROFILE_PATH), `${JSON.stringify(profile, null, 2)}\n`)
+    }
+  }
 
   // Remember what setup changed, so `start.ts` commits exactly those files.
   const changed = [...hashes].filter(([f, h]) => hash(f) !== h).map(([f]) => f)

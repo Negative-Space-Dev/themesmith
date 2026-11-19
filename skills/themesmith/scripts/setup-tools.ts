@@ -12,6 +12,7 @@ import { migrateLegacyNames } from './lib/migrate.ts'
 import { runShopify } from './lib/shopify.ts'
 
 type PackageManager = 'bun' | 'npm' | 'pnpm' | 'yarn'
+const EXEC: Record<PackageManager, string> = { bun: 'bun x', npm: 'npx', pnpm: 'pnpm exec', yarn: 'yarn' }
 
 type Tooling = {
   packageDir: string
@@ -20,6 +21,9 @@ type Tooling = {
   missingPackages: string[]
   installed: boolean
   prettierConfig: string | null
+  // Whether Prettier, with the theme's config, formats Liquid. A config without the Liquid plugin doesn't, so the
+  // format command then loads the plugin itself. Null until Prettier is installed.
+  liquidReady: boolean | null
   themeCheckConfig: boolean
   // Patterns .theme-check.yml should ignore and doesn't: everything outside the theme folders, and page builder files.
   missingThemeCheckIgnores: { pattern: string; reason: string }[]
@@ -91,9 +95,10 @@ function declaredDeps(dir: string): Set<string> {
   return new Set([...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})])
 }
 
-// Prefer the folder that already has Prettier, then one with installed node_modules, then the top level.
+// Prefer the folder that already has Prettier, then one with installed node_modules, then the top level. A Shopify
+// app in the same repository has its own tooling, so it's never the theme's.
 function choosePackageDir(): string {
-  const dirs = packageJsonDirs(root, 2)
+  const dirs = packageJsonDirs(root, 2).filter((d) => !existsSync(join(d, 'shopify.app.toml')))
   return (
     dirs.find((d) => declaredDeps(d).has('prettier')) ??
     dirs.find((d) => existsSync(join(d, 'node_modules'))) ??
@@ -110,6 +115,30 @@ function findPrettierConfig(dirs: string[]): string | null {
     if (readPackageJson(dir)?.prettier) return join(dir, 'package.json')
   }
   return null
+}
+
+// Whether a package loads from `dir`, wherever the package manager put it: in the folder's node_modules, hoisted
+// to a workspace's, or in Yarn Plug'n'Play's cache.
+function resolvable(pkg: string, dir: string): boolean {
+  if (existsSync(join(dir, 'node_modules', pkg, 'package.json'))) return true
+  try {
+    Bun.resolveSync(pkg, dir)
+    return true
+  } catch {
+    return [dir, root].some((d) => existsSync(join(d, '.pnp.cjs'))) && declaredDeps(dir).has(pkg)
+  }
+}
+
+const LIQUID_PLUGIN = '@shopify/prettier-plugin-liquid'
+
+function formatsLiquid(packageDir: string, manager: PackageManager, config: string | null): boolean | null {
+  const configArg = config ? ` --config "${relative(packageDir, config)}"` : ''
+  const r = spawnSync(`${EXEC[manager]} prettier${configArg} --file-info sections/themesmith-probe.liquid`, { cwd: packageDir, encoding: 'utf8', shell: true, timeout: 30_000 })
+  try {
+    return (JSON.parse(r.stdout) as { inferredParser: string | null }).inferredParser === 'liquid-html'
+  } catch {
+    return null
+  }
 }
 
 function gitignoreLines(): string[] {
@@ -209,13 +238,17 @@ function detect(): Tooling {
     ...(packageRel && !THEME_DIRS.has(packageRel) ? [`${packageRel}/**`] : []),
   ]
   const present = new Set(readIgnores())
+  const packageManager = lock?.[1] ?? 'bun'
+  const installed = PRETTIER_PACKAGES.every((p) => resolvable(p, packageDir))
+  const prettierConfig = findPrettierConfig(packageDir === root ? [root] : [packageDir, root])
   return {
     packageDir,
     packageJsonExists: existsSync(join(packageDir, 'package.json')),
-    packageManager: lock?.[1] ?? 'bun',
+    packageManager,
     missingPackages: PRETTIER_PACKAGES.filter((p) => !deps.has(p)),
-    installed: PRETTIER_PACKAGES.every((p) => existsSync(join(packageDir, 'node_modules', p, 'package.json'))),
-    prettierConfig: findPrettierConfig(packageDir === root ? [root] : [packageDir, root]),
+    installed,
+    prettierConfig,
+    liquidReady: installed && prettierConfig ? formatsLiquid(packageDir, packageManager, prettierConfig) : null,
     themeCheckConfig: existsSync(join(root, '.theme-check.yml')),
     missingThemeCheckIgnores: missingThemeCheckIgnores(),
     missingIgnores: wanted.filter((p) => !present.has(p)),
@@ -235,7 +268,6 @@ const ADD_DEV: Record<PackageManager, [string, string[]]> = {
   pnpm: ['pnpm', ['add', '-D']],
   yarn: ['yarn', ['add', '-D']],
 }
-const EXEC: Record<PackageManager, string> = { bun: 'bun x', npm: 'npx', pnpm: 'pnpm exec', yarn: 'yarn' }
 
 function applyFixes(t: Tooling): string[] {
   const done: string[] = []
@@ -287,6 +319,7 @@ const applied = apply ? applyFixes(tooling) : []
 const after = apply ? detect() : tooling
 const cwd = relative(root, after.packageDir) || '.'
 const configArg = after.prettierConfig ? ` --config ${relative(after.packageDir, after.prettierConfig)}` : ''
+const pluginArg = after.liquidReady === false ? ` --plugin ${LIQUID_PLUGIN}` : ''
 
 console.log(
   JSON.stringify(
@@ -296,6 +329,7 @@ console.log(
       missingPackages: after.missingPackages,
       installed: after.installed,
       prettierConfig: after.prettierConfig ? relative(root, after.prettierConfig) : null,
+      liquidReady: after.liquidReady,
       themeCheckConfig: after.themeCheckConfig,
       missingThemeCheckIgnores: after.missingThemeCheckIgnores,
       missingIgnores: after.missingIgnores,
@@ -303,7 +337,7 @@ console.log(
       missingInstructions: after.missingInstructions,
       applied,
       profile: {
-        format: [{ cwd, run: `${EXEC[after.packageManager]} prettier${configArg} --write {files}` }],
+        format: [{ cwd, run: `${EXEC[after.packageManager]} prettier${configArg}${pluginArg} --write {files}` }],
         checks: [{ cwd: '.', run: 'bun {skill}/scripts/theme-check.ts {files}' }],
       },
     },

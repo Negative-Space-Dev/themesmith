@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
@@ -14,7 +14,14 @@ function write(file: string, content = '') {
 
 function setup(...args: string[]) {
   const r = spawnSync('bun', [SETUP, ...args], { cwd: repo, encoding: 'utf8' })
-  return JSON.parse(r.stdout) as { missingThemeCheckIgnores: { pattern: string; reason: string }[]; missingInstructions: string[]; applied: string[] }
+  return JSON.parse(r.stdout) as {
+    missingThemeCheckIgnores: { pattern: string; reason: string }[]
+    missingInstructions: string[]
+    applied: string[]
+    packageDir: string
+    liquidReady: boolean | null
+    profile: { format: { cwd: string; run: string }[] }
+  }
 }
 
 beforeEach(() => {
@@ -24,7 +31,17 @@ beforeEach(() => {
   write('package.json', JSON.stringify({ devDependencies: { prettier: '3', '@shopify/prettier-plugin-liquid': '1' } }))
   write('node_modules/prettier/package.json', '{}')
   write('node_modules/@shopify/prettier-plugin-liquid/package.json', '{}')
-  write('.prettierrc.json', '{}')
+  // Prettier's --file-info, as the real one answers it: Liquid only with the plugin in the config.
+  write(
+    'node_modules/.bin/prettier',
+    `#!/usr/bin/env bun
+const a = process.argv.slice(2)
+const config = a.includes('--config') ? require('fs').readFileSync(a[a.indexOf('--config') + 1], 'utf8') : ''
+console.log(JSON.stringify({ ignored: false, inferredParser: config.includes('prettier-plugin-liquid') ? 'liquid-html' : null }))
+`
+  )
+  chmodSync(join(repo, 'node_modules/.bin/prettier'), 0o755)
+  write('.prettierrc.json', JSON.stringify({ plugins: ['@shopify/prettier-plugin-liquid'] }))
   write('.theme-check.yml', 'extends: theme-check:recommended\n\nignore:\n  - node_modules/**\n\nRemoteAsset:\n  enabled: false\n')
   write('sections/hero.liquid')
   write('sections/quiz-recommendation.liquid')
@@ -125,4 +142,19 @@ test('a rules block a formatter reshaped still counts as written', () => {
   // Changed words are still noticed.
   write('AGENTS.md', written.replace('Never push', 'Always push'))
   expect(setup().missingInstructions).toEqual(['AGENTS.md'])
+})
+
+test('loads the Liquid plugin in the format command when the theme\'s Prettier config leaves it out', () => {
+  expect(setup().profile.format[0].run).not.toContain('--plugin')
+  write('.prettierrc.json', JSON.stringify({ semi: false }))
+  const r = setup()
+  expect(r.liquidReady).toBe(false)
+  expect(r.profile.format[0].run).toBe('bun x prettier --config .prettierrc.json --plugin @shopify/prettier-plugin-liquid --write {files}')
+})
+
+test('never picks a Shopify app\'s folder for the theme\'s formatter, even when it has Prettier', () => {
+  write('package.json', JSON.stringify({ private: true }))
+  write('app/package.json', JSON.stringify({ devDependencies: { prettier: '3' } }))
+  write('app/shopify.app.toml', '')
+  expect(setup().packageDir).toBe('.')
 })

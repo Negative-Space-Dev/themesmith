@@ -359,3 +359,29 @@ test('start.ts --update stops on conflicts, listing the files to combine', () =>
   expect(r.conflicts).toEqual(['sections/hero.liquid'])
   expect(readFileSync(join(repo, 'sections/hero.liquid'), 'utf8')).toContain('<<<<<<<')
 })
+
+function setFormat(run: string) {
+  const path = join(repo, '.agents/themesmith.json')
+  writeFileSync(path, JSON.stringify({ ...JSON.parse(readFileSync(path, 'utf8')), format: [{ cwd: '.', run }] }))
+}
+
+// A formatter that can't read any file whose name has "legacy" in it, the way Prettier fails on broken HTML.
+const pickyFormat = `bun -e "const a = process.argv.slice(1); if (a.some((f) => f.includes('legacy'))) { console.error('[error] ' + a.find((f) => f.includes('legacy')) + ': LiquidHTMLParsingError: Attempting to close HtmlElement'); process.exit(2) } require('fs').appendFileSync('format.log', a.join(' ') + '\\\\n')" {files}`
+
+test('saves a file the formatter cannot read as it is, naming it, and formats the rest', () => {
+  setFormat(pickyFormat)
+  writeFileSync(join(repo, 'sections/legacy.liquid'), '<div>\n')
+  writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>New</h1>\n')
+  const { result } = save('--message', 'Hero text', '--no-push')
+  expect(result.ok).toBe(true)
+  expect(result.steps.find((s) => s.step === 'format')?.detail).toContain("left unformatted, because the formatter couldn't read them: sections/legacy.liquid")
+  expect(readFileSync(join(repo, 'format.log'), 'utf8')).toContain('sections/hero.liquid')
+})
+
+test('a formatter that fails for any other reason still stops the save', () => {
+  setFormat('bun -e "console.error(\'No parser could be inferred\'); process.exit(2)" {files}')
+  writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>New</h1>\n')
+  const { result } = save('--message', 'Hero text', '--no-push')
+  expect(result.ok).toBe(false)
+  expect(result.steps.at(-1)).toMatchObject({ step: 'format', ok: false })
+})
