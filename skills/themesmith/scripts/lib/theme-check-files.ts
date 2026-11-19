@@ -11,7 +11,7 @@
 // everything it refers to is still read from the theme: what the file's earlier version got reported.
 // Prints a JSON array of offenses: { check, file, line, column, severity: 'error' | 'warning' | 'info', message }.
 import { isLiquidHtmlNode } from '@shopify/liquid-html-parser'
-import { check, filePathSupportsLiquidDoc, extractDocDefinition, JSONValidator, toSchema, toSourceCode as parseSource } from '@shopify/theme-check-common'
+import { check, filePathSupportsLiquidDoc, extractDocDefinition, JSONValidator, memo, toSchema, toSourceCode as parseSource } from '@shopify/theme-check-common'
 import { ThemeLiquidDocsManager } from '@shopify/theme-check-docs-updater'
 import { loadConfig, NodeFileSystem, toSourceCode } from '@shopify/theme-check-node'
 import { existsSync, readFileSync } from 'node:fs'
@@ -26,6 +26,10 @@ const configPath = join(root, '.theme-check.yml')
 // The config path is always passed: under Bun, the library's own lookup returns the wrong type.
 const config = await loadConfig(existsSync(configPath) ? configPath : 'theme-check:recommended', root)
 const docs = new ThemeLiquidDocsManager(() => {})
+// Its setup downloads the latest Liquid docs from GitHub on every run, with no timeout, which made a check take
+// anywhere from a fraction of a second to several. Skipping it uses the docs downloaded earlier, or else the ones
+// bundled with the package.
+docs.setup = memo(async () => {})
 const isValidSchema = (await JSONValidator.create(docs, config))?.isValid
 
 const sources = new Map<string, ReturnType<typeof toSourceCode>>()
