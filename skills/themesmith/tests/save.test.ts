@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { bunCommand, installFakeShopify, pathWith, removeDir, windows } from './helpers.ts'
+import { addGitlink, bunCommand, installFakeShopify, pathWith, removeDir, windows } from './helpers.ts'
 
 const SKILL_DIR = resolve(import.meta.dir, '..')
 const DEV_TAG = '<script src="http://127.0.0.1:5173/main.ts"></script>\n'
@@ -444,4 +444,77 @@ test.skipIf(windows)('keeps a backslash that is part of a file name on Mac and L
   writeFileSync(join(repo, 'sections/a\\b.liquid'), '<p>odd name</p>\n')
   save('--message', 'Odd name', '--no-push')
   expect(readFileSync(join(repo, 'format.log'), 'utf8')).toBe('sections/a\\b.liquid\n')
+})
+
+function addCartBuild(cwd: string) {
+  const path = join(repo, '.agents/themesmith.json')
+  const profile = JSON.parse(readFileSync(path, 'utf8'))
+  profile.build.push({ cwd, run: 'bun run build' })
+  writeFileSync(path, JSON.stringify(profile))
+}
+function addSubmodule(url = 'git@example.com:private/cart.git', commit?: string) {
+  writeFileSync(join(repo, '.gitmodules'), `[submodule "cart"]\n\tpath = cart\n\turl = ${url}\n`)
+  mkdirSync(join(repo, 'cart'))
+  addGitlink(repo, 'cart', commit)
+}
+// What the server answers when the submodule is downloaded over SSH.
+function saveWithSsh(answer: string) {
+  process.env.GIT_SSH_COMMAND = bunCommand(dir, 'ssh', `console.error(${JSON.stringify(answer)}); process.exit(128)\n`)
+  try {
+    return save('--message', 'Update hero text')
+  } finally {
+    delete process.env.GIT_SSH_COMMAND
+  }
+}
+
+test.each(['cart', './cart/', 'cart/app', ...(windows ? ['.\\cart', 'cart\\app'] : [])])('saves without building a submodule the person has no access to (%s)', (cwd) => {
+  addSubmodule()
+  addCartBuild(cwd)
+  writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>New</h1>\n')
+  const { code, result } = saveWithSsh('ERROR: Repository not found.')
+  expect(code).toBe(0)
+  const builds = result.steps.filter((s) => s.step === 'build').map((s) => s.detail)
+  expect(builds).toHaveLength(2)
+  expect(builds[0]).toContain('no access to the')
+  expect(git(remote, 'show', 'hero-text:sections/hero.liquid')).toBe('<h1>New</h1>')
+  expect(git(remote, 'ls-tree', 'hero-text', 'cart')).toContain('160000 commit')
+})
+
+test.each(['Permission denied (publickey).', 'ssh: Could not resolve hostname example.com', "ERROR: Repository not found. The organization has enabled SAML SSO."])('stops when it cannot tell whether the person has access: %s', (answer) => {
+  addSubmodule()
+  addCartBuild('cart')
+  const { code, result } = saveWithSsh(answer)
+  expect(code).toBe(1)
+  expect(result.steps.at(-1)).toMatchObject({ step: 'build', ok: false })
+  expect(result.steps.at(-1)!.detail).toContain('Could not download the cart submodule')
+})
+
+test('downloads and builds a submodule the person has access to', () => {
+  const cart = join(dir, 'cart-source')
+  mkdirSync(cart)
+  git(cart, 'init', '-q', '-b', 'main')
+  git(cart, 'config', 'user.email', 'test@example.com')
+  git(cart, 'config', 'user.name', 'Test')
+  writeFileSync(join(cart, 'package.json'), JSON.stringify({ scripts: { build: 'bun build.ts' } }))
+  writeFileSync(join(cart, 'build.ts'), "require('fs').writeFileSync('../snippets/cart.liquid', 'built')\n")
+  git(cart, 'add', '-A')
+  git(cart, 'commit', '-qm', 'cart')
+  addSubmodule(cart.replaceAll('\\', '/'), git(cart, 'rev-parse', 'HEAD'))
+  addCartBuild('cart')
+  // Git refuses local submodules by default.
+  process.env.GIT_ALLOW_PROTOCOL = 'file'
+  try {
+    expect(save('--message', 'Update').code).toBe(0)
+  } finally {
+    delete process.env.GIT_ALLOW_PROTOCOL
+  }
+  expect(git(remote, 'show', 'hero-text:snippets/cart.liquid')).toBe('built')
+})
+
+test('an empty build folder that is not a submodule still stops the save', () => {
+  mkdirSync(join(repo, 'cart'))
+  addCartBuild('cart')
+  const { code, result } = save('--message', 'Update')
+  expect(code).toBe(1)
+  expect(result.steps.at(-1)).toMatchObject({ step: 'build', ok: false })
 })

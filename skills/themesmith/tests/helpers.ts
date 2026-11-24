@@ -1,4 +1,5 @@
 // Fakes for the programs the scripts run, built so they work on Mac, Linux and Windows alike.
+import { spawnSync } from 'node:child_process'
 import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { delimiter, dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -54,4 +55,9 @@ export function bunCommand(dir: string, name: string, source: string): string {
 // preview, a full Theme Check) is still using it, so this retries for a few seconds.
 export function removeDir(dir: string) {
   rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 })
+}
+
+// Records a submodule at `path` in the theme, pinned to `commit`, without downloading it.
+export function addGitlink(repo: string, path: string, commit = '1'.repeat(40)) {
+  spawnSync('git', ['update-index', '--add', '--cacheinfo', `160000,${commit},${path}`], { cwd: repo })
 }
