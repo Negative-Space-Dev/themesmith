@@ -205,6 +205,18 @@ console.log('Share your theme preview (https://example.myshopify.com/?preview_th
   expect(await fetch(started.preview).then(() => 'up', () => 'down')).toBe('down')
 })
 
+test('dev.ts leaves out a command whose submodule is not downloaded', () => {
+  installShopify(`const port = 20000 + Math.floor(Math.random() * 20000)
+Bun.serve({ port, fetch: () => new Response('ok') })
+console.log('Preview your theme: http://127.0.0.1:' + port)
+`)
+  writeFileSync(join(repo, '.gitmodules'), '[submodule "cart"]\n\tpath = cart\n\turl = git@example.com:private/cart.git\n')
+  mkdirSync(join(repo, 'cart'))
+  profile({ dev: [{ cwd: '.', run: 'bun {skill}/scripts/shopify.ts theme dev --store {store}' }, { cwd: 'cart', run: 'bun run dev' }] })
+  expect(script('dev.ts').json()).toMatchObject({ ok: true })
+  expect(script('dev.ts', 'stop').json()).toEqual({ ok: true, stopped: 1 })
+})
+
 test('login.ts hands back the sign-in link at once and finishes when the person signs in', () => {
   // Like the Shopify CLI: `theme list --json` fails until signed in; plain `theme list` shows a code and waits.
   const signedIn = join(dir, 'signed-in')

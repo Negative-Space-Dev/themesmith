@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { isRunning, shellArgs, startDetached, stopDetached } from './exec.ts'
 import type { Profile } from './profile.ts'
 import { SKILL_DIR, shellQuote } from './run.ts'
+import { splitByDownloaded } from './submodules.ts'
 
 type DevProcess = { pid: number; cwd: string; run: string; log: string }
 export type Preview = {
@@ -44,9 +45,10 @@ export type DevResult = { ok: true; preview: Preview } | { ok: false; message: s
 
 export async function startDev(root: string, profile: Profile, timeoutMs = 180_000): Promise<DevResult> {
   stopDev(root)
-  if (profile.dev.length === 0) return { ok: false, message: 'The profile has no dev commands.' }
+  const { runnable } = splitByDownloaded(root, profile.dev)
+  if (runnable.length === 0) return { ok: false, message: 'The profile has no dev commands that can run here.' }
   const vars: Record<string, string> = { skill: shellQuote(SKILL_DIR), store: profile.store }
-  const processes = profile.dev.map((command, i) => {
+  const processes = runnable.map((command, i) => {
     const run = command.run.replace(/\{(\w+)\}/g, (match, key) => vars[key] ?? match)
     const log = join(root, '.themesmith', 'dev', `${i}.log`)
     rmSync(log, { force: true })

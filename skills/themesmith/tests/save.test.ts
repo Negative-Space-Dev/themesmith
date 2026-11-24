@@ -445,3 +445,42 @@ test.skipIf(windows)('keeps a backslash that is part of a file name on Mac and L
   save('--message', 'Odd name', '--no-push')
   expect(readFileSync(join(repo, 'format.log'), 'utf8')).toBe('sections/a\\b.liquid\n')
 })
+
+function addCartBuild(cwd: string) {
+  const path = join(repo, '.agents/themesmith.json')
+  const profile = JSON.parse(readFileSync(path, 'utf8'))
+  profile.build.push({ cwd, run: 'bun run build' })
+  writeFileSync(path, JSON.stringify(profile))
+}
+const addSubmodule = () => writeFileSync(join(repo, '.gitmodules'), '[submodule "cart"]\n\tpath = cart\n\turl = git@example.com:private/cart.git\n')
+
+test.each(['cart', './cart/', 'cart/app'])('saves without building a submodule that is not downloaded (%s)', (cwd) => {
+  addSubmodule()
+  mkdirSync(join(repo, 'cart'))
+  addCartBuild(cwd)
+  writeFileSync(join(repo, 'sections/hero.liquid'), '<h1>New</h1>\n')
+  const { code, result } = save('--message', 'Update hero text')
+  expect(code).toBe(0)
+  const builds = result.steps.filter((s) => s.step === 'build').map((s) => s.detail)
+  expect(builds).toHaveLength(2)
+  expect(builds[0]).toContain("submodule isn't downloaded")
+  expect(git(remote, 'show', 'hero-text:sections/hero.liquid')).toBe('<h1>New</h1>')
+})
+
+test('still builds a submodule that is downloaded, and stops when that build fails', () => {
+  addSubmodule()
+  mkdirSync(join(repo, 'cart'))
+  writeFileSync(join(repo, 'cart/package.json'), JSON.stringify({ scripts: { build: 'exit 1' } }))
+  addCartBuild('cart')
+  const { code, result } = save('--message', 'Update')
+  expect(code).toBe(1)
+  expect(result.steps.at(-1)).toMatchObject({ step: 'build', ok: false })
+})
+
+test('an empty build folder that is not a submodule still stops the save', () => {
+  mkdirSync(join(repo, 'cart'))
+  addCartBuild('cart')
+  const { code, result } = save('--message', 'Update')
+  expect(code).toBe(1)
+  expect(result.steps.at(-1)).toMatchObject({ step: 'build', ok: false })
+})
