@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
 import { sh } from './exec.ts'
 import { globMatch, type Command, type Profile } from './profile.ts'
-import { splitByDownloaded } from './submodules.ts'
+import { readyCommands } from './submodules.ts'
 
 export type Step = { step: string; ok: boolean; detail?: string }
 
@@ -36,17 +36,19 @@ export class Run {
     this.finish(extra)
   }
 
-  // Leaves out commands whose submodule isn't downloaded, recording a step for each.
-  private runnable(step: string, commands: Command[]): Command[] {
-    const { runnable, skipped } = splitByDownloaded(this.root, commands)
-    for (const command of skipped) this.ok(step, `skipped \`${command.run}\`: the ${command.cwd} submodule isn't downloaded, so the files already in the theme are used`)
-    return runnable
+  // Leaves out commands inside a submodule this person has no access to, recording a step for each.
+  private async runnable(step: string, commands: Command[]): Promise<Command[]> {
+    const ready = await readyCommands(this.root, commands)
+    if (!ready.ok) this.fail(step, ready.message)
+    for (const command of ready.skipped) this.ok(step, `skipped \`${command.run}\`: no access to the ${command.cwd} submodule, so the files already in the theme are used`)
+    return ready.runnable
   }
 
   // Runs commands together and records a step for each, in order; stops at the first that failed.
   async commands(step: string, commands: Command[], vars: (command: Command) => Record<string, string>) {
+    const runnable = await this.runnable(step, commands)
     const results = await Promise.all(
-      this.runnable(step, commands).map(async (command) => {
+      runnable.map(async (command) => {
         const all: Record<string, string> = { skill: shellQuote(SKILL_DIR), ...vars(command) }
         const cmd = command.run.replace(/\{(\w+)\}/g, (match, key) => all[key] ?? match)
         return { cmd, r: await sh(cmd, { cwd: join(this.root, command.cwd) }) }
@@ -61,7 +63,7 @@ export class Run {
   // Formats the files. A file the formatter can't read (often HTML that was never well formed in an old theme) is
   // left as it is and named in the step, so it doesn't block the save; any other failure stops it.
   async format(profile: Profile, files: string[], fileArg: (command: Command, file: string) => string) {
-    for (const command of this.runnable('format', profile.format)) {
+    for (const command of await this.runnable('format', profile.format)) {
       const vars = (list: string[]) => ({ skill: shellQuote(SKILL_DIR), store: profile.store, files: list.map((f) => fileArg(command, f)).join(' ') })
       const all = await this.shell(command, vars(files))
       if (all.r.ok) {

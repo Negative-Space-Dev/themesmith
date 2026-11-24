@@ -37,7 +37,7 @@ When the doctor is ready, read the profile. It names the store, the mode (`githu
 
 Files made by page builder apps (Replo, GemPages, PageFly, Shogun; the list is in `scripts/lib/builders.ts`) are changed in that app, not by hand: the app overwrites them. If a request needs one changed, tell the person what to change in the app.
 
-Run the Shopify CLI only through `bun <skill>/scripts/shopify.ts`, never as plain `shopify`: the wrapper runs it on Bun. Commands that run inside a Git submodule this computer doesn't have are skipped; saves list them, and the files it built are already in the theme. Don't retry the download without access, and never edit those built files by hand: changes to that code need someone with access.
+Run the Shopify CLI only through `bun <skill>/scripts/shopify.ts`, never as plain `shopify`: the wrapper runs it on Bun. Commands that run inside a Git submodule download it first when it's missing. If the person has no access to it, they are skipped; saves list them, and the files it built are already in the theme. Never edit those built files by hand: changes to that code need someone with access. A submodule that can't be downloaded for another reason stops the work: help the person sign in or get online, then run it again.
 
 To check your work, run `bun <skill>/scripts/theme-check.ts <files you changed>`: it checks only those files, in about a second. It fails only on errors your change added. Errors a file already had before this work are listed as `earlier`: leave them alone unless the person asks. Checking the whole theme (`--all`) takes much longer and is for setup.
 

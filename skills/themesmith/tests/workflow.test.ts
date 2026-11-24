@@ -6,7 +6,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { suggestProfile } from '../scripts/lib/detect.ts'
-import { bunCommand, installCommand, installFakeShopify, pathWith, removeDir } from './helpers.ts'
+import { addGitlink, bunCommand, installCommand, installFakeShopify, pathWith, removeDir } from './helpers.ts'
 
 const SCRIPTS = resolve(import.meta.dir, '../scripts')
 let dir: string
@@ -205,15 +205,22 @@ console.log('Share your theme preview (https://example.myshopify.com/?preview_th
   expect(await fetch(started.preview).then(() => 'up', () => 'down')).toBe('down')
 })
 
-test('dev.ts leaves out a command whose submodule is not downloaded', () => {
+test('dev.ts leaves out a command inside a submodule the person has no access to', () => {
   installShopify(`const port = 20000 + Math.floor(Math.random() * 20000)
 Bun.serve({ port, fetch: () => new Response('ok') })
 console.log('Preview your theme: http://127.0.0.1:' + port)
 `)
   writeFileSync(join(repo, '.gitmodules'), '[submodule "cart"]\n\tpath = cart\n\turl = git@example.com:private/cart.git\n')
   mkdirSync(join(repo, 'cart'))
+  addGitlink(repo, 'cart')
   profile({ dev: [{ cwd: '.', run: 'bun {skill}/scripts/shopify.ts theme dev --store {store}' }, { cwd: 'cart', run: 'bun run dev' }] })
-  expect(script('dev.ts').json()).toMatchObject({ ok: true })
+  const ssh = bunCommand(dir, 'ssh', "console.error('ERROR: Repository not found.'); process.exit(128)\n")
+  process.env.GIT_SSH_COMMAND = ssh
+  try {
+    expect(script('dev.ts').json()).toMatchObject({ ok: true })
+  } finally {
+    delete process.env.GIT_SSH_COMMAND
+  }
   expect(script('dev.ts', 'stop').json()).toEqual({ ok: true, stopped: 1 })
 })
 
